@@ -1,0 +1,34 @@
+{
+    "name": "pharmacy-saas-backend",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Pharmacy SaaS Backend - Microservices",
+    "workspaces": [
+        "packages/*",
+        "services/*"
+    ],
+    "scripts": {
+        "dev": "node scripts/dev-start.js",
+        "dev:gateway": "npm run dev -w services/gateway",
+        "dev:auth": "npm run dev -w services/auth-service",
+        "dev:tenant": "npm run dev -w services/tenant-service",
+        "dev:inventory": "npm run dev -w services/inventory-service",
+        "dev:sales": "npm run dev -w services/sales-service",
+        "dev:analytics": "npm run dev -w services/analytics-service",
+        "dev:payment": "npm run dev -w services/payment-service",
+        "dev:notification": "npm run dev -w services/notification-service",
+        "dev:services": "concurrently \"npm run dev:gateway\" \"npm run dev:auth\" \"npm run dev:tenant\" \"npm run dev:inventory\" \"npm run dev:sales\"",
+        "build:shared": "npm run build -w packages/shared",
+        "build:db": "npm run build -w packages/db",
+        "build:rabbitmq": "npm run build -w packages/rabbitmq",
+        "build:packages": "npm run build:shared && npm run build:db && npm run build:rabbitmq",
+        "seed": "node scripts/seed-data.js",
+        "clean": "rimraf node_modules packages/*/dist services/*/dist"
+    },
+    "devDependencies": {
+        "@types/node": "^20.11.0",
+        "concurrently": "^8.2.2",
+        "rimraf": "^5.0.5",
+        "typescript": "^5.3.3"
+    }
+}
