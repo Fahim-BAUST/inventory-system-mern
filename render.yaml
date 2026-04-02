@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: pharmacy-saas-api
+    runtime: node
+    region: oregon
+    rootDir: backend
+    buildCommand: npm install && npm run build:unified
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: MONGODB_URI
+        sync: false
+      - key: RABBITMQ_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: JWT_ACCESS_EXPIRY
+        value: 15m
+      - key: JWT_REFRESH_EXPIRY
+        value: 7d
+      - key: SUPER_ADMIN_EMAIL
+        sync: false
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: GATEWAY_URL
+        sync: false
+      - key: SSLCOMMERZ_STORE_ID
+        sync: false
+      - key: SSLCOMMERZ_STORE_PASSWORD
+        sync: false
+      - key: SSLCOMMERZ_IS_SANDBOX
+        value: "true"
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false

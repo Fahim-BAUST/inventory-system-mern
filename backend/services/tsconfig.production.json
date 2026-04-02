@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "sourceMap": false,
+    "outDir": "../dist",
+    "rootDir": "."
+  },
+  "include": [
+    "server.ts",
+    "gateway/src/**/*",
+    "auth-service/src/**/*",
+    "tenant-service/src/**/*",
+    "inventory-service/src/**/*",
+    "sales-service/src/**/*",
+    "analytics-service/src/**/*",
+    "payment-service/src/**/*",
+    "notification-service/src/**/*"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

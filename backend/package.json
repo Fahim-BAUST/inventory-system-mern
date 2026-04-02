@@ -22,8 +22,10 @@
         "build:db": "npm run build -w packages/db",
         "build:rabbitmq": "npm run build -w packages/rabbitmq",
         "build:packages": "npm run build:shared && npm run build:db && npm run build:rabbitmq",
+        "build:unified": "npm run build:packages && tsc -p services/tsconfig.production.json",
+        "start": "node dist/server.js",
         "seed": "node scripts/seed-data.js",
-        "clean": "rimraf node_modules packages/*/dist services/*/dist"
+        "clean": "rimraf node_modules packages/*/dist services/*/dist dist"
     },
     "devDependencies": {
         "@types/node": "^20.11.0",
