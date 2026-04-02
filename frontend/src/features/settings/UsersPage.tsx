@@ -27,7 +27,7 @@ export default function UsersPage() {
   const inviteMutation = useMutation({
     mutationFn: () => userApi.invite(inviteForm),
     onSuccess: () => {
-      toast.success("User invited");
+      toast.success("User invited. Password setup email sent.");
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setShowInvite(false);
       setInviteForm({ firstName: "", lastName: "", email: "", role: "" });

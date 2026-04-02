@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 import { authApi } from "@/api/endpoints";
 import toast from "react-hot-toast";
 
@@ -23,6 +24,8 @@ export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const token = searchParams.get("token");
   const [loading, setLoading] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const {
     register,
@@ -82,12 +85,22 @@ export default function ResetPasswordPage() {
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             New Password
           </label>
-          <input
-            {...register("newPassword")}
-            type="password"
-            className="input-field"
-            placeholder="Minimum 8 characters"
-          />
+          <div className="relative">
+            <input
+              {...register("newPassword")}
+              type={showNewPassword ? "text" : "password"}
+              className="input-field pr-10"
+              placeholder="Minimum 8 characters"
+            />
+            <button
+              type="button"
+              onClick={() => setShowNewPassword((prev) => !prev)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              aria-label={showNewPassword ? "Hide password" : "Show password"}
+            >
+              {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
           {errors.newPassword && (
             <p className="text-red-500 text-xs mt-1">
               {errors.newPassword.message}
@@ -98,12 +111,24 @@ export default function ResetPasswordPage() {
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Confirm Password
           </label>
-          <input
-            {...register("confirmPassword")}
-            type="password"
-            className="input-field"
-            placeholder="Re-enter password"
-          />
+          <div className="relative">
+            <input
+              {...register("confirmPassword")}
+              type={showConfirmPassword ? "text" : "password"}
+              className="input-field pr-10"
+              placeholder="Re-enter password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword((prev) => !prev)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              aria-label={
+                showConfirmPassword ? "Hide password" : "Show password"
+              }
+            >
+              {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
           {errors.confirmPassword && (
             <p className="text-red-500 text-xs mt-1">
               {errors.confirmPassword.message}

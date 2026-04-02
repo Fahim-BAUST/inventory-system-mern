@@ -248,7 +248,11 @@ export async function logoutUser(refreshTokenValue: string) {
   await RefreshToken.deleteOne({ token: refreshTokenValue });
 }
 
-export async function forgotPassword(email: string, tenantId: string) {
+export async function forgotPassword(
+  email: string,
+  tenantId: string,
+  options?: { strictEmail?: boolean; emailType?: "reset" | "setup" },
+) {
   const user = await User.findOne({ email, tenantId }).select(
     "+passwordResetToken +passwordResetExpires",
   );
@@ -274,6 +278,22 @@ export async function forgotPassword(email: string, tenantId: string) {
   const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
 
   try {
+    const isSetupEmail = options?.emailType === "setup";
+    const emailSubject = isSetupEmail
+      ? "Set Up Your Password - Pharmacy SaaS"
+      : "Password Reset Request";
+    const emailTitle = isSetupEmail ? "Set Your Password" : "Password Reset";
+    const emailSubtitle = isSetupEmail
+      ? "Your account has been created. Set a password to get started"
+      : "We received a request to reset your password";
+    const emailBody = isSetupEmail
+      ? "An account has been created for you in Pharmacy SaaS. Click the button below to set your password and activate your access:"
+      : "Someone requested a password reset for your Pharmacy SaaS account. Click the button below to choose a new password:";
+    const buttonLabel = isSetupEmail ? "Set My Password" : "Reset My Password";
+    const securityNote = isSetupEmail
+      ? "If you were not expecting this invitation, contact your shop administrator before proceeding."
+      : "If you didn't request this password reset, you can safely ignore this email. Your password will remain unchanged.";
+
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || "smtp.gmail.com",
       port: Number(process.env.SMTP_PORT) || 587,
@@ -287,7 +307,7 @@ export async function forgotPassword(email: string, tenantId: string) {
     await transporter.sendMail({
       from: `"Pharmacy SaaS" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: "Password Reset Request",
+      subject: emailSubject,
       html: `
         <!DOCTYPE html>
         <html>
@@ -301,8 +321,8 @@ export async function forgotPassword(email: string, tenantId: string) {
                 <tr>
                   <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);padding:36px 40px;text-align:center;">
                     <div style="width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:50%;margin:0 auto 16px;line-height:56px;font-size:28px;">🔐</div>
-                    <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:600;letter-spacing:-0.3px;">Password Reset</h1>
-                    <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">We received a request to reset your password</p>
+                    <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:600;letter-spacing:-0.3px;">${emailTitle}</h1>
+                    <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">${emailSubtitle}</p>
                   </td>
                 </tr>
 
@@ -310,12 +330,12 @@ export async function forgotPassword(email: string, tenantId: string) {
                 <tr>
                   <td style="padding:36px 40px;">
                     <p style="color:#334155;font-size:15px;line-height:1.7;margin:0 0 8px;">Hi there,</p>
-                    <p style="color:#475569;font-size:15px;line-height:1.7;margin:0 0 28px;">Someone requested a password reset for your Pharmacy SaaS account. Click the button below to choose a new password:</p>
+                    <p style="color:#475569;font-size:15px;line-height:1.7;margin:0 0 28px;">${emailBody}</p>
                     
                     <!-- Button -->
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr><td align="center">
-                        <a href="${resetLink}" style="display:inline-block;padding:14px 40px;background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);color:#ffffff;text-decoration:none;border-radius:10px;font-size:15px;font-weight:600;letter-spacing:0.3px;box-shadow:0 4px 14px rgba(79,70,229,0.4);">Reset My Password</a>
+                        <a href="${resetLink}" style="display:inline-block;padding:14px 40px;background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);color:#ffffff;text-decoration:none;border-radius:10px;font-size:15px;font-weight:600;letter-spacing:0.3px;box-shadow:0 4px 14px rgba(79,70,229,0.4);">${buttonLabel}</a>
                       </td></tr>
                     </table>
 
@@ -341,7 +361,7 @@ export async function forgotPassword(email: string, tenantId: string) {
                   <td style="padding:24px 40px;">
                     <table cellpadding="0" cellspacing="0"><tr>
                       <td style="vertical-align:top;padding-right:10px;font-size:16px;">🛡️</td>
-                      <td style="color:#94a3b8;font-size:12px;line-height:1.6;">If you didn't request this password reset, you can safely ignore this email. Your password will remain unchanged.</td>
+                      <td style="color:#94a3b8;font-size:12px;line-height:1.6;">${securityNote}</td>
                     </tr></table>
                   </td>
                 </tr>
@@ -363,6 +383,11 @@ export async function forgotPassword(email: string, tenantId: string) {
     });
   } catch (err) {
     console.error("Failed to send reset email:", err);
+    if (options?.strictEmail) {
+      throw new BadRequestError(
+        "Failed to send password setup email. Please verify SMTP credentials and try again.",
+      );
+    }
   }
 
   return {
@@ -473,6 +498,12 @@ export async function createTenantOwner(data: {
 
   // Create default roles for the tenant
   await seedDefaultRoles(data.tenantId);
+
+  // Send password setup email so owner can set their own password.
+  await forgotPassword(user.email, data.tenantId, {
+    strictEmail: true,
+    emailType: "setup",
+  });
 
   return {
     _id: user._id,

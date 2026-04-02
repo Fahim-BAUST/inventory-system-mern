@@ -2,6 +2,7 @@ import { User } from "../models/user.model";
 import { Role } from "../models/role.model";
 import bcrypt from "bcryptjs";
 import { publishEvent } from "@pharmacy-saas/rabbitmq";
+import { forgotPassword } from "./auth.service";
 import {
   NotFoundError,
   ConflictError,
@@ -78,6 +79,12 @@ export async function inviteUser(data: {
   } catch {
     // non-critical
   }
+
+  // Send password setup email for invited members.
+  await forgotPassword(user.email, data.tenantId, {
+    strictEmail: true,
+    emailType: "setup",
+  });
 
   return user;
 }
