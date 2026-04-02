@@ -4,7 +4,7 @@ services:
     runtime: node
     region: oregon
     rootDir: backend
-    buildCommand: npm install && npm run build:unified
+    buildCommand: npm install --include=dev && npm run build:unified
     startCommand: npm start
     envVars:
       - key: NODE_ENV
