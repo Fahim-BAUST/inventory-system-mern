@@ -339,6 +339,28 @@ export async function forgotPassword(
                       </td></tr>
                     </table>
 
+                    ${
+                      isSetupEmail
+                        ? `
+                    <!-- Login Credentials -->
+                    <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:20px;margin:28px 0 0;">
+                      <p style="color:#4338ca;font-size:14px;font-weight:600;margin:0 0 12px;">📋 Your Login Details</p>
+                      <table cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                          <td style="color:#64748b;font-size:13px;padding:4px 0;width:90px;">Tenant ID:</td>
+                          <td style="color:#1e293b;font-size:13px;font-weight:600;padding:4px 0;font-family:monospace;letter-spacing:0.5px;">${tenantId}</td>
+                        </tr>
+                        <tr>
+                          <td style="color:#64748b;font-size:13px;padding:4px 0;width:90px;">Email:</td>
+                          <td style="color:#1e293b;font-size:13px;font-weight:600;padding:4px 0;">${email}</td>
+                        </tr>
+                      </table>
+                      <p style="color:#6366f1;font-size:12px;margin:10px 0 0;">Use the Tenant ID and email above to log in after setting your password.</p>
+                    </div>
+                    `
+                        : ""
+                    }
+
                     <!-- Expiry notice -->
                     <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin:28px 0 0;">
                       <table cellpadding="0" cellspacing="0"><tr>

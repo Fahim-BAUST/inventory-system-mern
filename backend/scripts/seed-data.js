@@ -4,14 +4,41 @@
  */
 const mongoose = require("mongoose");
 
-const TENANT_ID = process.argv[2] || "69ccbe43daa5424c6fdfd311";
-const tid = new mongoose.Types.ObjectId(TENANT_ID);
+const CLI_TENANT_ID = process.argv[2];
+const MONGODB_URI =
+  process.env.MONGODB_URI || "mongodb://localhost:27017/pharmacy-saas";
 
 async function seed() {
-  await mongoose.connect("mongodb://localhost:27017/pharmacy-saas");
+  await mongoose.connect(MONGODB_URI);
   const db = mongoose.connection.db;
 
-  console.log(`🌱 Seeding data for tenant: ${TENANT_ID}\n`);
+  let tenantId = CLI_TENANT_ID;
+  if (!tenantId) {
+    const existingTenant = await db
+      .collection("tenants")
+      .findOne({}, { projection: { _id: 1 } });
+    if (!existingTenant) {
+      throw new Error(
+        "No tenant found. Provide tenantId as argument: node scripts/seed-data.js <tenantId>",
+      );
+    }
+    tenantId = existingTenant._id.toString();
+  }
+
+  const tid = new mongoose.Types.ObjectId(tenantId);
+
+  const existingProducts = await db
+    .collection("products")
+    .countDocuments({ tenantId: tid });
+  if (existingProducts > 0) {
+    console.log(
+      `⚠️ Tenant ${tenantId} already has ${existingProducts} products. Skipping seed to avoid duplicates.`,
+    );
+    await mongoose.disconnect();
+    return;
+  }
+
+  console.log(`🌱 Seeding data for tenant: ${tenantId}\n`);
 
   // ── Categories ──
   const categories = [
