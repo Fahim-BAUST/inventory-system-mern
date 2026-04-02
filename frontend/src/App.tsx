@@ -5,6 +5,7 @@ import DashboardLayout from "@/layouts/DashboardLayout";
 import AdminLayout from "@/layouts/AdminLayout";
 import LoginPage from "@/features/auth/LoginPage";
 import ForgotPasswordPage from "@/features/auth/ForgotPasswordPage";
+import ResetPasswordPage from "@/features/auth/ResetPasswordPage";
 import DashboardPage from "@/features/dashboard/DashboardPage";
 import ProductsPage from "@/features/inventory/ProductsPage";
 import AddProductPage from "@/features/inventory/AddProductPage";
@@ -77,6 +78,7 @@ export default function App() {
       >
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
       </Route>
 
       {/* Super Admin routes */}

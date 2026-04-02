@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
+import nodemailer from "nodemailer";
 import { User } from "../models/user.model";
 import { RefreshToken } from "../models/refreshToken.model";
 import { Role } from "../models/role.model";
@@ -268,15 +269,105 @@ export async function forgotPassword(email: string, tenantId: string) {
   user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
   await user.save();
 
-  // TODO: Send email via notification service
-  // For now, return token in dev mode
-  const result: any = {
+  // Send reset email
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+  const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    await transporter.sendMail({
+      from: `"Pharmacy SaaS" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: "Password Reset Request",
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+        <body style="margin:0;padding:0;background-color:#f1f5f9;font-family:'Segoe UI',Roboto,Arial,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;padding:40px 0;">
+            <tr><td align="center">
+              <table width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+                
+                <!-- Header -->
+                <tr>
+                  <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);padding:36px 40px;text-align:center;">
+                    <div style="width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:50%;margin:0 auto 16px;line-height:56px;font-size:28px;">🔐</div>
+                    <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:600;letter-spacing:-0.3px;">Password Reset</h1>
+                    <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">We received a request to reset your password</p>
+                  </td>
+                </tr>
+
+                <!-- Body -->
+                <tr>
+                  <td style="padding:36px 40px;">
+                    <p style="color:#334155;font-size:15px;line-height:1.7;margin:0 0 8px;">Hi there,</p>
+                    <p style="color:#475569;font-size:15px;line-height:1.7;margin:0 0 28px;">Someone requested a password reset for your Pharmacy SaaS account. Click the button below to choose a new password:</p>
+                    
+                    <!-- Button -->
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr><td align="center">
+                        <a href="${resetLink}" style="display:inline-block;padding:14px 40px;background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);color:#ffffff;text-decoration:none;border-radius:10px;font-size:15px;font-weight:600;letter-spacing:0.3px;box-shadow:0 4px 14px rgba(79,70,229,0.4);">Reset My Password</a>
+                      </td></tr>
+                    </table>
+
+                    <!-- Expiry notice -->
+                    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin:28px 0 0;">
+                      <table cellpadding="0" cellspacing="0"><tr>
+                        <td style="vertical-align:top;padding-right:10px;font-size:16px;">⏱️</td>
+                        <td style="color:#64748b;font-size:13px;line-height:1.6;">This link will expire in <strong style="color:#334155;">1 hour</strong>. After that, you'll need to request a new one.</td>
+                      </tr></table>
+                    </div>
+
+                    <!-- Alternative link -->
+                    <p style="color:#94a3b8;font-size:12px;line-height:1.6;margin:24px 0 0;">If the button doesn't work, copy and paste this link into your browser:</p>
+                    <p style="word-break:break-all;font-size:12px;margin:6px 0 0;"><a href="${resetLink}" style="color:#4f46e5;text-decoration:underline;">${resetLink}</a></p>
+                  </td>
+                </tr>
+
+                <!-- Divider -->
+                <tr><td style="padding:0 40px;"><div style="border-top:1px solid #e2e8f0;"></div></td></tr>
+
+                <!-- Security notice -->
+                <tr>
+                  <td style="padding:24px 40px;">
+                    <table cellpadding="0" cellspacing="0"><tr>
+                      <td style="vertical-align:top;padding-right:10px;font-size:16px;">🛡️</td>
+                      <td style="color:#94a3b8;font-size:12px;line-height:1.6;">If you didn't request this password reset, you can safely ignore this email. Your password will remain unchanged.</td>
+                    </tr></table>
+                  </td>
+                </tr>
+
+                <!-- Footer -->
+                <tr>
+                  <td style="background:#f8fafc;padding:24px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+                    <p style="color:#94a3b8;font-size:12px;margin:0;">© ${new Date().getFullYear()} Pharmacy SaaS. All rights reserved.</p>
+                    <p style="color:#cbd5e1;font-size:11px;margin:8px 0 0;">This is an automated email. Please do not reply.</p>
+                  </td>
+                </tr>
+
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>
+      `,
+    });
+  } catch (err) {
+    console.error("Failed to send reset email:", err);
+  }
+
+  return {
     message: "If the email is registered, you will receive a reset link.",
   };
-  if (process.env.NODE_ENV === "development") {
-    result.resetToken = resetToken;
-  }
-  return result;
 }
 
 export async function resetPassword(resetToken: string, newPassword: string) {
