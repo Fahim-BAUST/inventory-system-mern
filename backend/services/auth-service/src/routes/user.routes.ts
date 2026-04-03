@@ -2,8 +2,14 @@ import { Router, Request, Response, NextFunction } from "express";
 import { body, query } from "express-validator";
 import * as userService from "../services/user.service";
 import { extractUser, requirePermission } from "../middleware/permissions";
-import { BadRequestError, PERMISSIONS } from "@pharmacy-saas/shared";
+import {
+  BadRequestError,
+  ForbiddenError,
+  PERMISSIONS,
+  getPlanLimit,
+} from "@pharmacy-saas/shared";
 import { validationResult } from "express-validator";
+import { mongoose } from "@pharmacy-saas/db";
 
 export const userRoutes = Router();
 
@@ -77,6 +83,31 @@ userRoutes.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const currentUser = (req as any).user;
+
+      // Enforce plan user limit
+      const db = mongoose.connection.db;
+      if (db) {
+        const tid = new mongoose.Types.ObjectId(currentUser.tenantId);
+        const [tenant, userCount] = await Promise.all([
+          db
+            .collection("tenants")
+            .findOne(
+              { _id: tid },
+              { projection: { "subscription.planId": 1 } },
+            ),
+          db.collection("users").countDocuments({ tenantId: tid }),
+        ]);
+        const planId = tenant?.subscription?.planId || "free";
+        const maxUsers = getPlanLimit(planId, "maxUsers");
+        if (userCount >= maxUsers) {
+          return next(
+            new ForbiddenError(
+              `Your ${planId} plan allows up to ${maxUsers} user(s). Please upgrade to add more.`,
+            ),
+          );
+        }
+      }
+
       const result = await userService.inviteUser({
         ...req.body,
         tenantId: currentUser.tenantId,
@@ -95,6 +126,14 @@ userRoutes.post(
 userRoutes.patch(
   "/:id",
   requirePermission(PERMISSIONS.USERS_UPDATE),
+  [
+    body("phone")
+      .optional()
+      .trim()
+      .matches(/^\+?[\d\s\-()]{7,20}$/)
+      .withMessage("Invalid phone format"),
+  ],
+  validate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const currentUser = (req as any).user;

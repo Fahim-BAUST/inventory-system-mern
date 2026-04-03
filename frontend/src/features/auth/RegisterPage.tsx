@@ -6,6 +6,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { authApi, tenantApi } from "@/api/endpoints";
 import toast from "react-hot-toast";
+import { validatePhone } from "@/utils/phone";
 
 const registerSchema = z
   .object({
@@ -20,7 +21,13 @@ const registerSchema = z
     firstName: z.string().min(1, "First name is required"),
     lastName: z.string().min(1, "Last name is required"),
     email: z.string().email("Valid email required"),
-    phone: z.string().min(6, "Phone number is required"),
+    phone: z
+      .string()
+      .min(1, "Phone number is required")
+      .refine(
+        (v) => !validatePhone(v),
+        (v) => ({ message: validatePhone(v) }),
+      ),
     password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string(),
   })
@@ -145,6 +152,7 @@ export default function RegisterPage() {
               </label>
               <input
                 {...register("phone")}
+                type="tel"
                 className="input-field"
                 placeholder="+880 1XXX-XXXXXX"
               />

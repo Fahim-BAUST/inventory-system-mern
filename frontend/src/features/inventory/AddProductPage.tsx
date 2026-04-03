@@ -2,8 +2,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { inventoryApi } from "@/api/endpoints";
+import { useTenant } from "@/hooks/useTenant";
 import toast from "react-hot-toast";
 import { useState, useRef } from "react";
 
@@ -31,6 +32,8 @@ type ProductForm = z.infer<typeof productSchema>;
 
 export default function AddProductPage() {
   const navigate = useNavigate();
+  const { currencySymbol } = useTenant();
+  const queryClient = useQueryClient();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +58,7 @@ export default function AddProductPage() {
     },
     onSuccess: () => {
       toast.success("Product created successfully");
+      queryClient.invalidateQueries({ queryKey: ["products"] });
       navigate("/inventory/products");
     },
     onError: (err: any) => {
@@ -262,7 +266,7 @@ export default function AddProductPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Cost Price (৳) *
+                Cost Price ({currencySymbol}) *
               </label>
               <input
                 {...register("costPrice")}
@@ -278,7 +282,7 @@ export default function AddProductPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Selling Price (৳) *
+                Selling Price ({currencySymbol}) *
               </label>
               <input
                 {...register("sellingPrice")}

@@ -77,6 +77,7 @@ export const inventoryApi = {
     search?: string;
     category?: string;
     status?: string;
+    stock?: string;
     from?: string;
     to?: string;
   }) => api.get("/inventory/products", { params }),
@@ -100,6 +101,13 @@ export const inventoryApi = {
     }),
   deleteProductImage: (id: string, publicId: string) =>
     api.delete(`/inventory/products/${id}/images/${publicId}`),
+  importProducts: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post("/inventory/products/import", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
 
   // Categories
   getCategories: () => api.get("/inventory/categories"),
@@ -126,6 +134,19 @@ export const inventoryApi = {
   // Expiry
   getExpiringBatches: (days?: number) =>
     api.get("/inventory/expiry", { params: { days } }),
+
+  // Purchase Orders
+  getPurchaseOrders: (params?: { status?: string; search?: string }) =>
+    api.get("/inventory/purchase-orders", { params }),
+  getPurchaseOrder: (id: string) => api.get(`/inventory/purchase-orders/${id}`),
+  createPurchaseOrder: (data: any) =>
+    api.post("/inventory/purchase-orders", data),
+  updatePurchaseOrder: (id: string, data: any) =>
+    api.patch(`/inventory/purchase-orders/${id}`, data),
+  updatePurchaseOrderStatus: (id: string, data: any) =>
+    api.post(`/inventory/purchase-orders/${id}/status`, data),
+  deletePurchaseOrder: (id: string) =>
+    api.delete(`/inventory/purchase-orders/${id}`),
 };
 
 export const salesApi = {
@@ -134,6 +155,30 @@ export const salesApi = {
   getSale: (id: string) => api.get(`/sales/${id}`),
   createReturn: (saleId: string, data: any) =>
     api.post(`/sales/${saleId}/return`, data),
+};
+
+export const customerApi = {
+  getAll: (search?: string) =>
+    api.get("/sales/customers", { params: { search } }),
+  create: (data: {
+    name: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+  }) => api.post("/sales/customers", data),
+  update: (id: string, data: any) => api.patch(`/sales/customers/${id}`, data),
+  delete: (id: string) => api.delete(`/sales/customers/${id}`),
+};
+
+export const prescriptionApi = {
+  getAll: (params?: { search?: string; status?: string }) =>
+    api.get("/sales/prescriptions", { params }),
+  getById: (id: string) => api.get(`/sales/prescriptions/${id}`),
+  create: (data: any) => api.post("/sales/prescriptions", data),
+  update: (id: string, data: any) =>
+    api.patch(`/sales/prescriptions/${id}`, data),
+  linkSale: (id: string, saleId: string) =>
+    api.post(`/sales/prescriptions/${id}/link-sale`, { saleId }),
 };
 
 export const analyticsApi = {
@@ -147,6 +192,24 @@ export const analyticsApi = {
       params,
       responseType: "blob",
     }),
+  getAuditLog: (params?: {
+    entity?: string;
+    action?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get("/analytics/audit-log", { params }),
+  createAuditLog: (data: {
+    action: string;
+    entity: string;
+    entityId?: string;
+    description?: string;
+    changes?: any;
+  }) => api.post("/analytics/audit-log", data),
+  getForecast: (params?: { horizon?: number; productId?: string }) =>
+    api.get("/analytics/forecast", { params }),
+  getProductForecast: (productId: string, horizon?: number) =>
+    api.get(`/analytics/forecast/${productId}`, { params: { horizon } }),
 };
 
 export const paymentApi = {

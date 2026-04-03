@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { inventoryApi } from "@/api/endpoints";
 import { Plus, Pencil, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
+import { validatePhone } from "@/utils/phone";
 
 export default function SuppliersPage() {
   const [showForm, setShowForm] = useState(false);
@@ -89,9 +90,15 @@ export default function SuppliersPage() {
             <input
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              type="tel"
               className="input-field"
-              placeholder="Phone"
+              placeholder="+880 1XXX-XXXXXX"
             />
+            {form.phone && validatePhone(form.phone, true) && (
+              <p className="text-red-500 text-xs mt-1">
+                {validatePhone(form.phone, true)}
+              </p>
+            )}
             <input
               value={form.address}
               onChange={(e) => setForm({ ...form, address: e.target.value })}
@@ -250,9 +257,16 @@ export default function SuppliersPage() {
                     phone: e.target.value,
                   })
                 }
+                type="tel"
                 className="input-field"
-                placeholder="Phone"
+                placeholder="+880 1XXX-XXXXXX"
               />
+              {editingSupplier.phone &&
+                validatePhone(editingSupplier.phone, true) && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {validatePhone(editingSupplier.phone, true)}
+                  </p>
+                )}
               <input
                 value={editingSupplier.address || ""}
                 onChange={(e) =>

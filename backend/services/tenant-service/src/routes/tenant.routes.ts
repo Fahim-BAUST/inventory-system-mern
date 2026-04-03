@@ -33,7 +33,12 @@ tenantRoutes.post(
       .isEmail()
       .normalizeEmail()
       .withMessage("Valid email required"),
-    body("phone").trim().notEmpty().withMessage("Phone number is required"),
+    body("phone")
+      .trim()
+      .notEmpty()
+      .withMessage("Phone number is required")
+      .matches(/^\+?[\d\s\-()]{7,20}$/)
+      .withMessage("Invalid phone format"),
   ],
   validate,
   async (req: Request, res: Response, next: NextFunction) => {

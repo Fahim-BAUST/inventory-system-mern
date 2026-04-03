@@ -53,7 +53,12 @@ export default function ShopSettingsPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Phone
               </label>
-              <input {...register("phone")} className="input-field" />
+              <input
+                {...register("phone")}
+                type="tel"
+                className="input-field"
+                placeholder="+880 1XXX-XXXXXX"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

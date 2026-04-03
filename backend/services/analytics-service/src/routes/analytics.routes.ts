@@ -82,6 +82,12 @@ analyticsRoutes.get(
         topProducts,
         expiringBatches,
         lowStockProducts,
+        currentReturnsAgg,
+        prevReturnsAgg,
+        trendReturnsAgg,
+        paymentMethodAgg,
+        hourlySalesAgg,
+        categorySalesAgg,
       ] = await Promise.all([
         DailySummary.find(kpiDateFilter).lean(),
         DailySummary.find({
@@ -162,24 +168,180 @@ analyticsRoutes.get(
           .sort({ totalStock: 1 })
           .limit(5)
           .toArray(),
+        // Direct return counts from Sales collection (source of truth)
+        col("sales")
+          .aggregate([
+            {
+              $match: {
+                ...(hasDateRange
+                  ? {
+                      tenantId: tid,
+                      createdAt: { $gte: rangeFromDate, $lte: rangeToDate },
+                    }
+                  : { tenantId: tid }),
+                isReturned: true,
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                count: { $sum: 1 },
+                amount: { $sum: "$totalAmount" },
+              },
+            },
+          ])
+          .toArray(),
+        col("sales")
+          .aggregate([
+            {
+              $match: {
+                tenantId: tid,
+                isReturned: true,
+                createdAt: {
+                  $gte: new Date(prevFrom + "T00:00:00"),
+                  $lte: new Date(prevTo + "T23:59:59.999"),
+                },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                count: { $sum: 1 },
+                amount: { $sum: "$totalAmount" },
+              },
+            },
+          ])
+          .toArray(),
+        col("sales")
+          .aggregate([
+            {
+              $match: {
+                tenantId: tid,
+                isReturned: true,
+                createdAt: {
+                  $gte: new Date(rangeFrom + "T00:00:00"),
+                  $lte: new Date(rangeTo + "T23:59:59.999"),
+                },
+              },
+            },
+            {
+              $group: {
+                _id: {
+                  $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+                },
+                count: { $sum: 1 },
+                amount: { $sum: "$totalAmount" },
+              },
+            },
+          ])
+          .toArray(),
+        // Payment method breakdown
+        col("sales")
+          .aggregate([
+            { $match: { ...salesDateFilter, isReturned: { $ne: true } } },
+            {
+              $group: {
+                _id: "$paymentMethod",
+                count: { $sum: 1 },
+                amount: { $sum: "$totalAmount" },
+              },
+            },
+            { $sort: { amount: -1 } },
+          ])
+          .toArray(),
+        // Hourly sales distribution
+        col("sales")
+          .aggregate([
+            { $match: { ...salesDateFilter, isReturned: { $ne: true } } },
+            {
+              $group: {
+                _id: { $hour: "$createdAt" },
+                count: { $sum: 1 },
+                amount: { $sum: "$totalAmount" },
+              },
+            },
+            { $sort: { _id: 1 } },
+          ])
+          .toArray(),
+        // Category performance
+        col("sales")
+          .aggregate([
+            { $match: salesDateFilter },
+            { $unwind: "$items" },
+            {
+              $lookup: {
+                from: "products",
+                localField: "items.productId",
+                foreignField: "_id",
+                as: "product",
+              },
+            },
+            { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+            {
+              $lookup: {
+                from: "categories",
+                localField: "product.categoryId",
+                foreignField: "_id",
+                as: "category",
+              },
+            },
+            {
+              $unwind: {
+                path: "$category",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+            {
+              $group: {
+                _id: { $ifNull: ["$category.name", "Uncategorized"] },
+                quantity: { $sum: "$items.quantity" },
+                revenue: {
+                  $sum: {
+                    $multiply: [
+                      { $ifNull: ["$items.unitPrice", "$items.price"] },
+                      "$items.quantity",
+                    ],
+                  },
+                },
+              },
+            },
+            { $sort: { revenue: -1 } },
+            { $limit: 8 },
+          ])
+          .toArray(),
       ]);
+
+      // Use direct return data from Sales collection (source of truth)
+      const directReturns = currentReturnsAgg[0]?.count || 0;
+      const directReturnAmt = currentReturnsAgg[0]?.amount || 0;
+      const prevDirectReturnAmt = prevReturnsAgg[0]?.amount || 0;
+
+      const trendReturnsByDate: Record<
+        string,
+        { count: number; amount: number }
+      > = Object.fromEntries(
+        trendReturnsAgg.map((r: any) => [
+          r._id,
+          { count: r.count, amount: r.amount },
+        ]),
+      );
 
       const todaySales = currentSummaries.reduce(
         (sum, d) => sum + (d.totalSales || 0),
         0,
       );
-      const todayRevenue = currentSummaries.reduce(
-        (sum, d) => sum + (d.totalRevenue || 0),
-        0,
-      );
+      const todayReturns = directReturns;
+      const todayReturnAmount = directReturnAmt;
+      const todayRevenue =
+        currentSummaries.reduce((sum, d) => sum + (d.totalRevenue || 0), 0) -
+        todayReturnAmount;
       const ySales = prevSummaries.reduce(
         (sum, d) => sum + (d.totalSales || 0),
         0,
       );
-      const yRevenue = prevSummaries.reduce(
-        (sum, d) => sum + (d.totalRevenue || 0),
-        0,
-      );
+      const yRevenue =
+        prevSummaries.reduce((sum, d) => sum + (d.totalRevenue || 0), 0) -
+        prevDirectReturnAmt;
 
       // Build alerts
       const alerts: any[] = [];
@@ -208,6 +370,8 @@ analyticsRoutes.get(
         data: {
           todaySales,
           todayRevenue,
+          todayReturns,
+          todayReturnAmount,
           salesChange:
             ySales > 0 ? Math.round(((todaySales - ySales) / ySales) * 100) : 0,
           revenueChange:
@@ -227,7 +391,10 @@ analyticsRoutes.get(
           trend: trendData.map((d: any) => ({
             date: d.date,
             sales: d.totalSales,
-            revenue: d.totalRevenue,
+            revenue:
+              (d.totalRevenue || 0) - (trendReturnsByDate[d.date]?.amount || 0),
+            returns: trendReturnsByDate[d.date]?.count || 0,
+            returnAmount: trendReturnsByDate[d.date]?.amount || 0,
           })),
           topProducts: topProducts.map((p: any) => ({
             name: p._id,
@@ -237,6 +404,21 @@ analyticsRoutes.get(
             revenue: p.totalRevenue,
           })),
           alerts,
+          paymentMethods: paymentMethodAgg.map((p: any) => ({
+            method: p._id || "Unknown",
+            count: p.count,
+            amount: p.amount,
+          })),
+          hourlySales: hourlySalesAgg.map((h: any) => ({
+            hour: h._id,
+            count: h.count,
+            amount: h.amount,
+          })),
+          categoryPerformance: categorySalesAgg.map((c: any) => ({
+            category: c._id,
+            quantity: c.quantity,
+            revenue: c.revenue,
+          })),
         },
       });
     } catch (err) {
@@ -264,18 +446,7 @@ analyticsRoutes.get(
         .sort({ date: 1 })
         .lean();
 
-      // Totals
-      const totals = summaries.reduce(
-        (acc, d) => ({
-          totalSales: acc.totalSales + (d.totalSales || 0),
-          totalRevenue: acc.totalRevenue + (d.totalRevenue || 0),
-          totalReturns: acc.totalReturns + (d.totalReturns || 0),
-          totalItemsSold: acc.totalItemsSold + (d.itemsSold || 0),
-        }),
-        { totalSales: 0, totalRevenue: 0, totalReturns: 0, totalItemsSold: 0 },
-      );
-
-      // Top products for the period
+      // Date filter for direct Sales collection queries
       const dateFilter: any = { tenantId: tid };
       if (from) dateFilter.createdAt = { $gte: new Date(from as string) };
       if (to)
@@ -283,6 +454,49 @@ analyticsRoutes.get(
           ...dateFilter.createdAt,
           $lte: new Date((to as string) + "T23:59:59"),
         };
+
+      // Count returns directly from Sales collection (source of truth)
+      const returnsAgg = await col("sales")
+        .aggregate([
+          { $match: { ...dateFilter, isReturned: true } },
+          {
+            $group: {
+              _id: {
+                $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+              },
+              count: { $sum: 1 },
+              amount: { $sum: "$totalAmount" },
+            },
+          },
+        ])
+        .toArray();
+      const returnsByDate: Record<string, { count: number; amount: number }> =
+        Object.fromEntries(
+          returnsAgg.map((r: any) => [
+            r._id,
+            { count: r.count, amount: r.amount },
+          ]),
+        );
+      const directTotalReturns = returnsAgg.reduce(
+        (s: number, r: any) => s + r.count,
+        0,
+      );
+      const directReturnAmount = returnsAgg.reduce(
+        (s: number, r: any) => s + r.amount,
+        0,
+      );
+
+      // Totals (use direct return data from Sales collection)
+      const totals = summaries.reduce(
+        (acc, d) => ({
+          totalSales: acc.totalSales + (d.totalSales || 0),
+          totalRevenue: acc.totalRevenue + (d.totalRevenue || 0),
+          totalItemsSold: acc.totalItemsSold + (d.itemsSold || 0),
+        }),
+        { totalSales: 0, totalRevenue: 0, totalItemsSold: 0 } as any,
+      );
+      totals.totalReturns = directTotalReturns;
+      totals.totalRevenue = totals.totalRevenue - directReturnAmount;
 
       const topProducts = await col("sales")
         .aggregate([
@@ -338,8 +552,9 @@ analyticsRoutes.get(
           summaries: summaries.map((d: any) => ({
             date: d.date,
             sales: d.totalSales,
-            revenue: d.totalRevenue,
-            returns: d.totalReturns,
+            revenue:
+              (d.totalRevenue || 0) - (returnsByDate[d.date]?.amount || 0),
+            returns: returnsByDate[d.date]?.count || 0,
             items: d.itemsSold,
           })),
           totals,

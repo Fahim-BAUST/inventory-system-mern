@@ -38,12 +38,17 @@ import {
   batchRoutes,
   productBatchRoutes,
 } from "./inventory-service/src/routes/batch.routes";
+import { purchaseOrderRoutes } from "./inventory-service/src/routes/purchaseOrder.routes";
 import { startExpiryCron } from "./inventory-service/src/cron/expiryChecker";
 import { handleInventoryEvent } from "./inventory-service/src/consumers/inventoryConsumer";
 
 import { salesRoutes } from "./sales-service/src/routes/sales.routes";
+import { customerRoutes } from "./sales-service/src/routes/customer.routes";
+import { prescriptionRoutes } from "./sales-service/src/routes/prescription.routes";
 
 import { analyticsRoutes } from "./analytics-service/src/routes/analytics.routes";
+import { auditRoutes } from "./analytics-service/src/routes/audit.routes";
+import { forecastRoutes } from "./analytics-service/src/routes/forecast.routes";
 import { handleAnalyticsEvent } from "./analytics-service/src/consumers/analyticsConsumer";
 
 import { paymentRoutes } from "./payment-service/src/routes/payment.routes";
@@ -124,16 +129,21 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/tenants", tenantRoutes);
 
 // Inventory
-app.use("/api/inventory/products", productRoutes);
+app.use("/api/inventory/purchase-orders", purchaseOrderRoutes);
 app.use("/api/inventory/products/:productId/batches", productBatchRoutes);
+app.use("/api/inventory/products", productRoutes);
 app.use("/api/inventory/categories", categoryRoutes);
 app.use("/api/inventory/suppliers", supplierRoutes);
 app.use("/api/inventory/expiry", batchRoutes);
 
-// Sales
+// Sales (specific paths first)
+app.use("/api/sales/customers", customerRoutes);
+app.use("/api/sales/prescriptions", prescriptionRoutes);
 app.use("/api/sales", salesRoutes);
 
-// Analytics
+// Analytics (specific paths first)
+app.use("/api/analytics/audit-log", auditRoutes);
+app.use("/api/analytics/forecast", forecastRoutes);
 app.use("/api/analytics", analyticsRoutes);
 
 // Payments

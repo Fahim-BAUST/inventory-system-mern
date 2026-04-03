@@ -9,6 +9,7 @@ import {
   Package,
   ShoppingCart,
   BarChart3,
+  TrendingUp,
   Settings,
   Users,
   ChevronDown,
@@ -31,6 +32,10 @@ import {
   Package2,
   Zap,
   UserPlus,
+  Contact,
+  ClipboardList,
+  FileText,
+  HelpCircle,
 } from "lucide-react";
 
 const navItems = [
@@ -47,6 +52,11 @@ const navItems = [
         path: "/inventory/expiry-tracker",
         icon: AlertTriangle,
       },
+      {
+        label: "Purchase Orders",
+        path: "/inventory/purchase-orders",
+        icon: ClipboardList,
+      },
     ],
   },
   {
@@ -55,9 +65,17 @@ const navItems = [
     children: [
       { label: "POS Terminal", path: "/sales/pos", icon: ShoppingCart },
       { label: "Sales History", path: "/sales/history", icon: History },
+      { label: "Customers", path: "/sales/customers", icon: Contact },
+      { label: "Prescriptions", path: "/sales/prescriptions", icon: FileText },
     ],
   },
   { label: "Reports", path: "/reports", icon: BarChart3 },
+  { label: "Forecasting", path: "/forecasting", icon: TrendingUp },
+  {
+    label: "Audit Log",
+    path: "/audit-log",
+    icon: Shield,
+  },
   {
     label: "Settings",
     icon: Settings,
@@ -68,6 +86,7 @@ const navItems = [
       { label: "Billing", path: "/settings/subscription", icon: CreditCard },
     ],
   },
+  { label: "Help", path: "/help", icon: HelpCircle },
 ];
 
 export default function DashboardLayout() {

@@ -1,5 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { Sale } from "../models/sale.model";
+import { Customer } from "../models/customer.model";
+import { Prescription } from "../models/prescription.model";
 import { getNextInvoiceNumber } from "../models/counter.model";
 import { extractUser, requirePermission } from "../middleware/permissions";
 import {
@@ -9,6 +11,7 @@ import {
   EVENTS,
 } from "@pharmacy-saas/shared";
 import { publishEvent } from "@pharmacy-saas/rabbitmq";
+import { mongoose } from "@pharmacy-saas/db";
 
 export const salesRoutes = Router();
 salesRoutes.use(extractUser);
@@ -72,8 +75,16 @@ salesRoutes.post(
   async (req, res, next) => {
     try {
       const { tenantId, userId } = (req as any).user;
-      const { items, subtotal, discount, totalAmount, paymentMethod } =
-        req.body;
+      const {
+        items,
+        subtotal,
+        discount,
+        taxAmount,
+        totalAmount,
+        paymentMethod,
+        customerId,
+        prescriptionId,
+      } = req.body;
 
       if (!items || items.length === 0) {
         return next(new BadRequestError("At least one item is required"));
@@ -85,14 +96,38 @@ salesRoutes.post(
       const sale = await Sale.create({
         tenantId,
         invoiceNumber,
+        customerId: customerId || undefined,
+        prescriptionId: prescriptionId || undefined,
         items,
         subtotal,
+        taxAmount: taxAmount || 0,
         discount: discount || 0,
         totalAmount,
         paymentMethod: paymentMethod || "cash",
         paymentStatus: "paid",
         soldBy: userId,
       });
+
+      // Update customer stats if linked
+      if (customerId) {
+        Customer.findByIdAndUpdate(customerId, {
+          $inc: { totalPurchases: 1, totalSpent: totalAmount },
+          lastVisit: new Date(),
+        }).catch(() => {});
+      }
+
+      // Link sale to prescription and mark as dispensed
+      if (prescriptionId) {
+        Prescription.findOneAndUpdate(
+          { _id: prescriptionId, tenantId },
+          { $addToSet: { saleIds: sale._id }, $set: { status: "dispensed" } },
+        ).catch(() => {});
+        // Also try matching by prescriptionNumber
+        Prescription.findOneAndUpdate(
+          { prescriptionNumber: prescriptionId, tenantId },
+          { $addToSet: { saleIds: sale._id }, $set: { status: "dispensed" } },
+        ).catch(() => {});
+      }
 
       // Publish sale event for analytics and inventory stock deduction
       try {
@@ -131,6 +166,20 @@ salesRoutes.post(
 
       sale.isReturned = true;
       await sale.save();
+
+      // Directly update DailySummary (reliable even without RabbitMQ)
+      try {
+        const today = new Date().toISOString().split("T")[0];
+        await mongoose.connection
+          .db!.collection("dailysummaries")
+          .updateOne(
+            { tenantId: new mongoose.Types.ObjectId(tenantId), date: today },
+            { $inc: { totalReturns: 1, totalReturnAmount: sale.totalAmount } },
+            { upsert: true },
+          );
+      } catch {
+        /* non-critical */
+      }
 
       try {
         await publishEvent(EVENTS.SALES_RETURN_PROCESSED, {

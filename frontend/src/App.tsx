@@ -13,9 +13,15 @@ import EditProductPage from "@/features/inventory/EditProductPage";
 import CategoriesPage from "@/features/inventory/CategoriesPage";
 import SuppliersPage from "@/features/inventory/SuppliersPage";
 import ExpiryTrackerPage from "@/features/inventory/ExpiryTrackerPage";
+import PurchaseOrdersPage from "@/features/inventory/PurchaseOrdersPage";
 import POSPage from "@/features/sales/POSPage";
 import SalesHistoryPage from "@/features/sales/SalesHistoryPage";
+import CustomersPage from "@/features/sales/CustomersPage";
+import PrescriptionsPage from "@/features/sales/PrescriptionsPage";
 import ReportsPage from "@/features/analytics/ReportsPage";
+import ForecastingPage from "@/features/analytics/ForecastingPage";
+import AuditLogPage from "@/features/analytics/AuditLogPage";
+import HelpPage from "@/features/help/HelpPage";
 import UsersPage from "@/features/settings/UsersPage";
 import RolesPage from "@/features/settings/RolesPage";
 import ShopSettingsPage from "@/features/settings/ShopSettingsPage";
@@ -120,11 +126,20 @@ export default function App() {
           path="/inventory/expiry-tracker"
           element={<ExpiryTrackerPage />}
         />
+        <Route
+          path="/inventory/purchase-orders"
+          element={<PurchaseOrdersPage />}
+        />
         {/* Sales */}
         <Route path="/sales/pos" element={<POSPage />} />
         <Route path="/sales/history" element={<SalesHistoryPage />} />
+        <Route path="/sales/customers" element={<CustomersPage />} />
+        <Route path="/sales/prescriptions" element={<PrescriptionsPage />} />
         {/* Analytics */}
         <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/forecasting" element={<ForecastingPage />} />
+        <Route path="/audit-log" element={<AuditLogPage />} />
+        <Route path="/help" element={<HelpPage />} />
         {/* Settings */}
         <Route path="/settings/users" element={<UsersPage />} />
         <Route path="/settings/roles" element={<RolesPage />} />

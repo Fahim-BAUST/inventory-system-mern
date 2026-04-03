@@ -4,6 +4,7 @@ import { z } from "zod";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { inventoryApi } from "@/api/endpoints";
+import { useTenant } from "@/hooks/useTenant";
 import toast from "react-hot-toast";
 import { useState, useRef } from "react";
 import { Trash2, Power, Plus, Package, Pencil, Check, X } from "lucide-react";
@@ -37,6 +38,7 @@ type ProductForm = z.infer<typeof productSchema>;
 export default function EditProductPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { currencySymbol } = useTenant();
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -407,7 +409,7 @@ export default function EditProductPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Cost Price (৳) *
+                Cost Price ({currencySymbol}) *
               </label>
               <input
                 {...register("costPrice")}
@@ -423,7 +425,7 @@ export default function EditProductPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Selling Price (৳) *
+                Selling Price ({currencySymbol}) *
               </label>
               <input
                 {...register("sellingPrice")}
@@ -531,7 +533,7 @@ export default function EditProductPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Purchase Price (৳)
+                  Purchase Price ({currencySymbol})
                 </label>
                 <input
                   type="number"
@@ -696,7 +698,9 @@ export default function EditProductPage() {
                               </span>
                             </td>
                             <td className="py-2 px-3 text-right tabular-nums text-gray-500 dark:text-gray-400">
-                              {b.purchasePrice ? `৳${b.purchasePrice}` : "—"}
+                              {b.purchasePrice
+                                ? `${currencySymbol}${b.purchasePrice}`
+                                : "—"}
                             </td>
                             <td className="py-2 px-3 text-center">
                               <button

@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { salesApi } from "@/api/endpoints";
+import { salesApi, analyticsApi } from "@/api/endpoints";
+import { useTenant } from "@/hooks/useTenant";
 import DateRangePicker, { type DatePreset } from "@/components/DateRangePicker";
+import toast from "react-hot-toast";
 import {
   X,
   Receipt,
@@ -12,6 +14,7 @@ import {
   ChevronRight,
   Eye,
   Download,
+  RotateCcw,
 } from "lucide-react";
 
 function toDateStr(d: Date) {
@@ -57,13 +60,38 @@ const SALES_PRESETS: DatePreset[] = [
 ];
 
 export default function SalesHistoryPage() {
+  const { currencySymbol } = useTenant();
   const [page, setPage] = useState(1);
   const [selectedSale, setSelectedSale] = useState<any>(null);
+  const [returnConfirm, setReturnConfirm] = useState(false);
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
+  const queryClient = useQueryClient();
+
+  const returnMutation = useMutation({
+    mutationFn: (saleId: string) => salesApi.createReturn(saleId, {}),
+    onSuccess: () => {
+      toast.success("Return processed — stock restored");
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      analyticsApi
+        .createAuditLog({
+          action: "return",
+          entity: "sale",
+          entityId: selectedSale?._id,
+          description: `Return on ${selectedSale?.invoiceNumber}`,
+        })
+        .catch(() => {});
+      setSelectedSale((prev: any) =>
+        prev ? { ...prev, isReturned: true } : null,
+      );
+      setReturnConfirm(false);
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.message || "Return failed"),
+  });
 
   const handleDownloadPDF = () => {
     if (!selectedSale) return;
@@ -89,10 +117,10 @@ export default function SalesHistoryPage() {
         <tr>
           <td style="padding:10px 0;border-bottom:1px solid #eee;font-size:13px;">
             <strong>${item.productName || item.name}</strong><br/>
-            <span style="color:#999;font-size:11px;">${qty} × ৳${price.toFixed(2)}</span>
+            <span style="color:#999;font-size:11px;">${qty} × ${currencySymbol}${price.toFixed(2)}</span>
           </td>
           <td style="padding:10px 0;border-bottom:1px solid #eee;text-align:right;font-size:13px;font-weight:600;white-space:nowrap;">
-            ৳${total.toFixed(2)}
+            ${currencySymbol}${total.toFixed(2)}
           </td>
         </tr>`;
       })
@@ -100,25 +128,25 @@ export default function SalesHistoryPage() {
 
     const subtotal = sale.subtotal ?? sale.totalAmount ?? 0;
     const discount = sale.discount ?? 0;
-    const tax = sale.tax ?? 0;
+    const tax = sale.taxAmount ?? 0;
 
     let summaryRows = `
       <tr>
         <td style="padding:6px 0;font-size:13px;color:#888;">Subtotal</td>
-        <td style="padding:6px 0;text-align:right;font-size:13px;">৳${subtotal.toFixed(2)}</td>
+        <td style="padding:6px 0;text-align:right;font-size:13px;">${currencySymbol}${subtotal.toFixed(2)}</td>
       </tr>`;
     if (discount > 0) {
       summaryRows += `
       <tr>
         <td style="padding:6px 0;font-size:13px;color:#888;">Discount</td>
-        <td style="padding:6px 0;text-align:right;font-size:13px;color:#ef4444;">−৳${discount.toFixed(2)}</td>
+        <td style="padding:6px 0;text-align:right;font-size:13px;color:#ef4444;">−${currencySymbol}${discount.toFixed(2)}</td>
       </tr>`;
     }
     if (tax > 0) {
       summaryRows += `
       <tr>
         <td style="padding:6px 0;font-size:13px;color:#888;">Tax</td>
-        <td style="padding:6px 0;text-align:right;font-size:13px;">৳${tax.toFixed(2)}</td>
+        <td style="padding:6px 0;text-align:right;font-size:13px;">${currencySymbol}${tax.toFixed(2)}</td>
       </tr>`;
     }
 
@@ -182,7 +210,7 @@ export default function SalesHistoryPage() {
     </tr>
     <tr>
       <td style="padding:10px 0;font-size:16px;font-weight:700;">Total</td>
-      <td style="padding:10px 0;text-align:right;font-size:20px;font-weight:700;color:#2563eb;">৳${(sale.totalAmount ?? 0).toFixed(2)}</td>
+      <td style="padding:10px 0;text-align:right;font-size:20px;font-weight:700;color:#2563eb;">${currencySymbol}${(sale.totalAmount ?? 0).toFixed(2)}</td>
     </tr>
   </table>
 
@@ -369,6 +397,11 @@ export default function SalesHistoryPage() {
                       <span className="font-mono text-xs font-semibold bg-gray-100 dark:bg-white/5 px-2 py-1 rounded">
                         {sale.invoiceNumber}
                       </span>
+                      {sale.isReturned && (
+                        <span className="badge-danger ml-2 text-[10px]">
+                          Returned
+                        </span>
+                      )}
                     </td>
                     <td className="table-cell text-gray-600 dark:text-gray-400">
                       <div>{new Date(sale.createdAt).toLocaleDateString()}</div>
@@ -380,7 +413,8 @@ export default function SalesHistoryPage() {
                       {sale.items?.length ?? 0}
                     </td>
                     <td className="table-cell text-right font-semibold tabular-nums">
-                      ৳{sale.totalAmount?.toFixed(2)}
+                      {currencySymbol}
+                      {sale.totalAmount?.toFixed(2)}
                     </td>
                     <td className="table-cell text-center">
                       <span className="badge-neutral capitalize">
@@ -542,12 +576,12 @@ export default function SalesHistoryPage() {
                           {item.productName || item.name}
                         </Link>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 tabular-nums">
-                          {item.quantity} × ৳
+                          {item.quantity} × {currencySymbol}
                           {(item.unitPrice || item.price || 0).toFixed(2)}
                         </p>
                       </div>
                       <span className="text-sm font-semibold tabular-nums shrink-0">
-                        ৳
+                        {currencySymbol}
                         {(
                           (item.quantity || 0) *
                           (item.unitPrice || item.price || 0)
@@ -568,7 +602,7 @@ export default function SalesHistoryPage() {
                     Subtotal
                   </span>
                   <span className="tabular-nums">
-                    ৳
+                    {currencySymbol}
                     {(
                       selectedSale.subtotal ?? selectedSale.totalAmount
                     )?.toFixed(2)}
@@ -580,17 +614,19 @@ export default function SalesHistoryPage() {
                       Discount
                     </span>
                     <span className="text-red-500 tabular-nums">
-                      −৳{selectedSale.discount?.toFixed(2)}
+                      −{currencySymbol}
+                      {selectedSale.discount?.toFixed(2)}
                     </span>
                   </div>
                 )}
-                {(selectedSale.tax ?? 0) > 0 && (
+                {(selectedSale.taxAmount ?? 0) > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500 dark:text-gray-400">
                       Tax
                     </span>
                     <span className="tabular-nums">
-                      ৳{selectedSale.tax?.toFixed(2)}
+                      {currencySymbol}
+                      {selectedSale.taxAmount?.toFixed(2)}
                     </span>
                   </div>
                 )}
@@ -598,7 +634,8 @@ export default function SalesHistoryPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-base font-bold">Total</span>
                   <span className="text-xl font-bold text-primary-600 dark:text-primary-400 tabular-nums">
-                    ৳{selectedSale.totalAmount?.toFixed(2)}
+                    {currencySymbol}
+                    {selectedSale.totalAmount?.toFixed(2)}
                   </span>
                 </div>
               </div>
@@ -656,14 +693,42 @@ export default function SalesHistoryPage() {
             </div>
 
             {/* Footer action (hidden in print) */}
-            <div className="px-5 py-3 border-t border-gray-200 dark:border-white/[0.06] print-hide">
+            <div className="px-5 py-3 border-t border-gray-200 dark:border-white/[0.06] print-hide flex gap-2">
               <button
                 onClick={() => handleDownloadPDF()}
-                className="btn-primary w-full flex items-center justify-center gap-2"
+                className="btn-primary flex-1 flex items-center justify-center gap-2"
               >
                 <Download size={16} />
-                Download as PDF
+                Download PDF
               </button>
+              {!selectedSale.isReturned &&
+                (returnConfirm ? (
+                  <div className="flex-1 flex gap-2">
+                    <button
+                      onClick={() => returnMutation.mutate(selectedSale._id)}
+                      disabled={returnMutation.isPending}
+                      className="flex-1 py-2 px-3 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+                    >
+                      {returnMutation.isPending
+                        ? "Processing..."
+                        : "Confirm Return"}
+                    </button>
+                    <button
+                      onClick={() => setReturnConfirm(false)}
+                      className="btn-secondary !py-2"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setReturnConfirm(true)}
+                    className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                  >
+                    <RotateCcw size={16} />
+                    Return
+                  </button>
+                ))}
             </div>
           </div>
         </div>

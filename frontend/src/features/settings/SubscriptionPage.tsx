@@ -1,19 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { tenantApi, paymentApi } from "@/api/endpoints";
+import { useTenant } from "@/hooks/useTenant";
 import { Check } from "lucide-react";
 
 const plans = [
   {
     id: "free",
     name: "Free Trial",
-    price: "৳0",
+    numericPrice: 0,
     period: "30 days",
     features: ["1 User", "100 Products", "Basic Reports", "POS Terminal"],
   },
   {
     id: "starter",
     name: "Starter",
-    price: "৳499",
+    numericPrice: 499,
     period: "/month",
     features: [
       "5 Users",
@@ -27,12 +28,13 @@ const plans = [
   {
     id: "professional",
     name: "Professional",
-    price: "৳999",
+    numericPrice: 999,
     period: "/month",
     features: [
       "20 Users",
       "Unlimited Products",
       "Advanced Analytics",
+      "AI Demand Forecasting",
       "All Notifications",
       "Priority Support",
     ],
@@ -40,11 +42,12 @@ const plans = [
   {
     id: "enterprise",
     name: "Enterprise",
-    price: "Custom",
+    numericPrice: null,
     period: "",
     features: [
       "Unlimited Users",
       "Unlimited Products",
+      "AI Demand Forecasting",
       "API Access",
       "Dedicated Support",
       "Custom Integrations",
@@ -53,6 +56,7 @@ const plans = [
 ];
 
 export default function SubscriptionPage() {
+  const { currencySymbol } = useTenant();
   const { data: tenant } = useQuery({
     queryKey: ["tenant-me"],
     queryFn: () => tenantApi.getMe().then((r) => r.data.data),
@@ -109,7 +113,11 @@ export default function SubscriptionPage() {
             )}
             <h3 className="font-semibold text-lg">{plan.name}</h3>
             <div className="mt-2 mb-4">
-              <span className="text-3xl font-bold">{plan.price}</span>
+              <span className="text-3xl font-bold">
+                {plan.numericPrice !== null
+                  ? `${currencySymbol}${plan.numericPrice}`
+                  : "Custom"}
+              </span>
               <span className="text-gray-500 dark:text-gray-400 text-sm">
                 {plan.period}
               </span>

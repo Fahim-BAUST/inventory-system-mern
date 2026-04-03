@@ -7,6 +7,8 @@ import helmet from "helmet";
 import { connectDB } from "@pharmacy-saas/db";
 import { connectRabbitMQ } from "@pharmacy-saas/rabbitmq";
 import { salesRoutes } from "./routes/sales.routes";
+import { customerRoutes } from "./routes/customer.routes";
+import { prescriptionRoutes } from "./routes/prescription.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 const app = express();
@@ -20,6 +22,9 @@ app.get("/health", (_req, res) => {
   res.json({ success: true, message: "Sales service running" });
 });
 
+// Specific sub-paths MUST come before the generic /api/sales (which has /:id)
+app.use("/api/sales/customers", customerRoutes);
+app.use("/api/sales/prescriptions", prescriptionRoutes);
 app.use("/api/sales", salesRoutes);
 
 app.use(errorHandler);

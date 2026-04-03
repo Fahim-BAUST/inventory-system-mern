@@ -49,7 +49,11 @@ adminRoutes.post(
     body("password")
       .isLength({ min: 8 })
       .withMessage("Password must be at least 8 characters"),
-    body("phone").optional().trim(),
+    body("phone")
+      .optional()
+      .trim()
+      .matches(/^\+?[\d\s\-()]{7,20}$/)
+      .withMessage("Invalid phone format"),
   ],
   validate,
   async (req: Request, res: Response, next: NextFunction) => {

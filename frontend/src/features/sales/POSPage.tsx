@@ -1,6 +1,11 @@
-import { useState, useRef } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { inventoryApi, salesApi } from "@/api/endpoints";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  inventoryApi,
+  salesApi,
+  customerApi,
+  analyticsApi,
+} from "@/api/endpoints";
 import {
   Search,
   Plus,
@@ -12,9 +17,14 @@ import {
   CreditCard,
   Smartphone,
   Clock,
+  ScanBarcode,
+  X,
+  Printer,
+  FileText,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import ProductThumb from "@/components/ProductThumb";
+import { useTenant } from "@/hooks/useTenant";
 
 interface CartItem {
   productId: string;
@@ -24,6 +34,7 @@ interface CartItem {
   quantity: number;
   discount: number;
   total: number;
+  requiresPrescription?: boolean;
 }
 
 const PAYMENT_METHODS = [
@@ -34,12 +45,18 @@ const PAYMENT_METHODS = [
 ] as const;
 
 export default function POSPage() {
+  const { currencySymbol, taxRate } = useTenant();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<
     "cash" | "card" | "mobile" | "credit"
   >("cash");
   const [discount, setDiscount] = useState(0);
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [printOnCheckout, setPrintOnCheckout] = useState(true);
+  const [prescriptionId, setPrescriptionId] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
   const { data: products } = useQuery({
@@ -49,14 +66,81 @@ export default function POSPage() {
     enabled: search.length > 1,
   });
 
+  const { data: customers } = useQuery({
+    queryKey: ["pos-customers", customerSearch],
+    queryFn: () =>
+      customerApi.getAll(customerSearch || undefined).then((r) => r.data.data),
+    enabled: customerSearch.length > 0,
+  });
+
+  const printReceipt = (sale: any) => {
+    const dateStr = new Date().toLocaleDateString("en", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+    const timeStr = new Date().toLocaleTimeString("en", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const itemRows = (sale.items || [])
+      .map((item: any) => {
+        const qty = item.quantity || 0;
+        const price = item.unitPrice || 0;
+        return `<tr><td style="padding:4px 0;font-size:12px;">${item.productName}</td><td style="text-align:right;font-size:12px;">${qty}x${currencySymbol}${price}</td><td style="text-align:right;font-size:12px;font-weight:600;">${currencySymbol}${(qty * price).toFixed(2)}</td></tr>`;
+      })
+      .join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Receipt</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:monospace;width:280px;margin:0 auto;padding:16px 8px;font-size:12px}@media print{@page{margin:2mm;size:80mm auto}}</style>
+</head><body>
+<div style="text-align:center;margin-bottom:12px;"><strong style="font-size:14px;">PharmaSaaS</strong><br/>${sale.invoiceNumber}<br/>${dateStr} ${timeStr}</div>
+<hr style="border:none;border-top:1px dashed #000;margin:8px 0;"/>
+<table style="width:100%;border-collapse:collapse;">${itemRows}</table>
+<hr style="border:none;border-top:1px dashed #000;margin:8px 0;"/>
+<div style="text-align:right;">
+<div>Subtotal: ${currencySymbol}${(sale.subtotal || 0).toFixed(2)}</div>
+${sale.discount > 0 ? `<div>Discount: -${currencySymbol}${sale.discount.toFixed(2)}</div>` : ""}
+${sale.taxAmount > 0 ? `<div>Tax: ${currencySymbol}${sale.taxAmount.toFixed(2)}</div>` : ""}
+<div style="font-size:14px;font-weight:700;margin-top:4px;">Total: ${currencySymbol}${(sale.totalAmount || 0).toFixed(2)}</div>
+<div style="margin-top:4px;text-transform:capitalize;">Paid: ${sale.paymentMethod}</div>
+</div>
+<hr style="border:none;border-top:1px dashed #000;margin:8px 0;"/>
+<div style="text-align:center;font-size:10px;">Thank you!</div>
+</body></html>`;
+    const w = window.open("", "_blank", "width=320,height=600");
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => {
+      w.print();
+      w.close();
+    }, 300);
+  };
+
   const saleMutation = useMutation({
     mutationFn: (data: any) => salesApi.createSale(data),
     onSuccess: (res) => {
-      const inv = res.data?.data?.invoiceNumber || "";
+      const sale = res.data?.data;
+      const inv = sale?.invoiceNumber || "";
       toast.success(`Sale completed! ${inv}`);
+      if (printOnCheckout && sale) printReceipt(sale);
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["pos-products"] });
+      analyticsApi
+        .createAuditLog({
+          action: "create",
+          entity: "sale",
+          entityId: sale?._id,
+          description: `Sale ${inv} — ${currencySymbol}${(sale?.totalAmount || 0).toFixed(2)}`,
+        })
+        .catch(() => {});
       setCart([]);
       setDiscount(0);
       setSearch("");
+      setSelectedCustomer(null);
+      setCustomerSearch("");
+      setPrescriptionId("");
       searchRef.current?.focus();
     },
     onError: (err: any) =>
@@ -93,12 +177,42 @@ export default function POSPage() {
           quantity: 1,
           discount: discountPct,
           total: discountedPrice,
+          requiresPrescription: product.requiresPrescription || false,
         },
       ];
     });
     setSearch("");
     searchRef.current?.focus();
   };
+
+  // Barcode scanner: on Enter, if exactly one product matches (or barcode exact match), auto-add it
+  const handleSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key !== "Enter" || !search.trim()) return;
+      e.preventDefault();
+      if (products?.length === 1) {
+        addToCart(products[0]);
+      } else if (products?.length > 1) {
+        // Check for exact barcode match
+        const exact = products.find(
+          (p: any) => p.barcode && p.barcode === search.trim(),
+        );
+        if (exact) addToCart(exact);
+      }
+    },
+    [search, products],
+  );
+
+  // Auto-focus search when pressing any key outside an input (for rapid barcode scanning)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      searchRef.current?.focus();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const updateQuantity = (productId: string, delta: number) => {
     setCart((prev) =>
@@ -116,17 +230,26 @@ export default function POSPage() {
 
   const subtotal = cart.reduce((sum, i) => sum + i.total, 0);
   const discountAmount = (subtotal * discount) / 100;
-  const totalAmount = Math.max(0, subtotal - discountAmount);
+  const afterDiscount = Math.max(0, subtotal - discountAmount);
+  const taxAmount = Math.round(afterDiscount * taxRate) / 100;
+  const totalAmount = afterDiscount + taxAmount;
   const itemCount = cart.reduce((sum, i) => sum + i.quantity, 0);
+  const hasRxItems = cart.some((i) => i.requiresPrescription);
 
   const handleCheckout = () => {
     if (cart.length === 0) return toast.error("Cart is empty");
+    if (hasRxItems && !prescriptionId.trim()) {
+      return toast.error("Prescription ID is required for Rx items");
+    }
     saleMutation.mutate({
       items: cart,
       subtotal,
       discount: discountAmount,
+      taxAmount,
       totalAmount,
       paymentMethod,
+      customerId: selectedCustomer?._id || undefined,
+      prescriptionId: prescriptionId.trim() || undefined,
     });
   };
 
@@ -145,9 +268,14 @@ export default function POSPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
             className="input-field pl-10 !py-3 text-base"
             placeholder="Search product or scan barcode..."
             autoFocus
+          />
+          <ScanBarcode
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-300 dark:text-gray-600"
+            size={18}
           />
           {/* Search Dropdown */}
           {search.length > 1 && products?.length > 0 && (
@@ -172,10 +300,11 @@ export default function POSPage() {
                     {product.discount > 0 ? (
                       <div>
                         <span className="text-[11px] text-gray-400 line-through mr-1">
-                          ৳{product.sellingPrice}
+                          {currencySymbol}
+                          {product.sellingPrice}
                         </span>
                         <span className="text-sm font-bold text-primary-600 dark:text-primary-400 tabular-nums">
-                          ৳
+                          {currencySymbol}
                           {(
                             product.sellingPrice *
                             (1 - product.discount / 100)
@@ -187,7 +316,8 @@ export default function POSPage() {
                       </div>
                     ) : (
                       <span className="text-sm font-bold text-primary-600 dark:text-primary-400 tabular-nums">
-                        ৳{product.sellingPrice}
+                        {currencySymbol}
+                        {product.sellingPrice}
                       </span>
                     )}
                   </div>
@@ -234,6 +364,11 @@ export default function POSPage() {
                           <ProductThumb src={item.productImage} size={28} />
                           <span className="font-medium">
                             {item.productName}
+                            {item.requiresPrescription && (
+                              <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                                Rx
+                              </span>
+                            )}
                           </span>
                         </div>
                       </td>
@@ -258,7 +393,8 @@ export default function POSPage() {
                       </td>
                       <td className="table-cell text-right tabular-nums text-gray-500 dark:text-gray-400">
                         <div>
-                          ৳{item.unitPrice}
+                          {currencySymbol}
+                          {item.unitPrice}
                           {item.discount > 0 && (
                             <span className="block text-[10px] text-green-600 dark:text-green-400">
                               -{item.discount}%
@@ -267,7 +403,8 @@ export default function POSPage() {
                         </div>
                       </td>
                       <td className="table-cell text-right font-semibold tabular-nums">
-                        ৳{item.total.toFixed(2)}
+                        {currencySymbol}
+                        {item.total.toFixed(2)}
                       </td>
                       <td className="table-cell">
                         <button
@@ -291,7 +428,8 @@ export default function POSPage() {
                 {itemCount} items in cart
               </span>
               <span className="font-semibold">
-                Subtotal: ৳{subtotal.toFixed(2)}
+                Subtotal: {currencySymbol}
+                {subtotal.toFixed(2)}
               </span>
             </div>
           )}
@@ -313,7 +451,10 @@ export default function POSPage() {
           <div className="space-y-2.5 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-gray-400">Subtotal</span>
-              <span className="tabular-nums">৳{subtotal.toFixed(2)}</span>
+              <span className="tabular-nums">
+                {currencySymbol}
+                {subtotal.toFixed(2)}
+              </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">Discount</span>
@@ -334,15 +475,103 @@ export default function POSPage() {
                 </span>
               </div>
             </div>
+            {taxRate > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-600 dark:text-gray-400">
+                  Tax ({taxRate}%)
+                </span>
+                <span className="tabular-nums">
+                  {currencySymbol}
+                  {taxAmount.toFixed(2)}
+                </span>
+              </div>
+            )}
             <div className="h-px bg-gray-200 dark:bg-white/[0.06]" />
             <div className="flex justify-between text-lg font-bold">
               <span>Total</span>
               <span className="text-primary-600 dark:text-primary-400 tabular-nums">
-                ৳{totalAmount.toFixed(2)}
+                {currencySymbol}
+                {totalAmount.toFixed(2)}
               </span>
             </div>
           </div>
         </div>
+
+        {/* Customer (optional) */}
+        <div className="card space-y-2">
+          <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+            Customer (optional)
+          </h3>
+          {selectedCustomer ? (
+            <div className="flex items-center justify-between p-2 rounded-lg bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-500/20">
+              <div>
+                <p className="text-sm font-medium">{selectedCustomer.name}</p>
+                {selectedCustomer.phone && (
+                  <p className="text-[11px] text-gray-500">
+                    {selectedCustomer.phone}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedCustomer(null);
+                  setCustomerSearch("");
+                }}
+                className="p-1 rounded text-gray-400 hover:text-red-500"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <div className="relative">
+              <input
+                type="text"
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                className="input-field !py-2 text-sm"
+                placeholder="Search customer by name or phone..."
+              />
+              {customerSearch && customers?.length > 0 && (
+                <div className="absolute z-20 top-full mt-1 w-full bg-white dark:bg-[#111827] border border-gray-200 dark:border-white/[0.06] rounded-lg shadow-lg overflow-hidden">
+                  {customers.slice(0, 5).map((c: any) => (
+                    <button
+                      key={c._id}
+                      onClick={() => {
+                        setSelectedCustomer(c);
+                        setCustomerSearch("");
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-primary-50 dark:hover:bg-primary-500/10 text-sm border-b border-gray-100 dark:border-white/[0.04] last:border-0"
+                    >
+                      <span className="font-medium">{c.name}</span>
+                      {c.phone && (
+                        <span className="text-gray-400 ml-2">{c.phone}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Prescription (shows when cart has Rx items) */}
+        {hasRxItems && (
+          <div className="card space-y-2">
+            <h3 className="text-sm font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+              <FileText size={14} /> Prescription Required
+            </h3>
+            <input
+              type="text"
+              value={prescriptionId}
+              onChange={(e) => setPrescriptionId(e.target.value)}
+              className="input-field !py-2 text-sm"
+              placeholder="Enter prescription ID (e.g. RX-00001)"
+            />
+            <p className="text-[11px] text-gray-500">
+              Cart contains items that require a prescription.
+            </p>
+          </div>
+        )}
 
         {/* Payment method */}
         <div className="card space-y-3">
@@ -367,21 +596,38 @@ export default function POSPage() {
           </div>
         </div>
 
-        {/* Checkout button */}
-        <button
-          onClick={handleCheckout}
-          disabled={cart.length === 0 || saleMutation.isPending}
-          className="btn-primary w-full !py-4 text-base font-bold shadow-lg shadow-primary-600/20 hover:shadow-xl hover:shadow-primary-600/30 transition-all"
-        >
-          {saleMutation.isPending ? (
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />{" "}
-              Processing...
+        {/* Print toggle + Checkout button */}
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none px-1">
+            <input
+              type="checkbox"
+              checked={printOnCheckout}
+              onChange={(e) => setPrintOnCheckout(e.target.checked)}
+              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <Printer size={14} className="text-gray-500" />
+            <span className="text-gray-600 dark:text-gray-400">
+              Print receipt on checkout
             </span>
-          ) : (
-            <>Checkout &bull; ৳{totalAmount.toFixed(2)}</>
-          )}
-        </button>
+          </label>
+          <button
+            onClick={handleCheckout}
+            disabled={cart.length === 0 || saleMutation.isPending}
+            className="btn-primary w-full !py-4 text-base font-bold shadow-lg shadow-primary-600/20 hover:shadow-xl hover:shadow-primary-600/30 transition-all"
+          >
+            {saleMutation.isPending ? (
+              <span className="flex items-center gap-2">
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />{" "}
+                Processing...
+              </span>
+            ) : (
+              <>
+                Checkout &bull; {currencySymbol}
+                {totalAmount.toFixed(2)}
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

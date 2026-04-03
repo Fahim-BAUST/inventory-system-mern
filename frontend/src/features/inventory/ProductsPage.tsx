@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { inventoryApi } from "@/api/endpoints";
+import { useTenant } from "@/hooks/useTenant";
 import DateRangePicker, { type DatePreset } from "@/components/DateRangePicker";
 import ProductThumb from "@/components/ProductThumb";
 import toast from "react-hot-toast";
@@ -13,6 +14,7 @@ import {
   Pencil,
   Power,
   Package,
+  Upload,
 } from "lucide-react";
 
 function toDateStr(d: Date) {
@@ -49,6 +51,7 @@ const PRODUCT_PRESETS: DatePreset[] = [
 ];
 
 export default function ProductsPage() {
+  const { currencySymbol } = useTenant();
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -61,6 +64,29 @@ export default function ProductsPage() {
   const [endDate, setEndDate] = useState<Date | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
+  const importMutation = useMutation({
+    mutationFn: (file: File) => inventoryApi.importProducts(file),
+    onSuccess: (res) => {
+      const d = res.data.data;
+      toast.success(`${d.created} products imported, ${d.skipped} skipped`);
+      if (d.errors?.length) {
+        d.errors
+          .slice(0, 5)
+          .forEach((e: string) => toast.error(e, { duration: 5000 }));
+      }
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.message || "Import failed"),
+  });
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) importMutation.mutate(file);
+    e.target.value = "";
+  };
 
   useEffect(() => {
     const cat = searchParams.get("category");
@@ -99,6 +125,7 @@ export default function ProductsPage() {
       dateTo,
       categoryFilter,
       statusFilter,
+      stockFilter,
     ],
     queryFn: () =>
       inventoryApi
@@ -110,27 +137,37 @@ export default function ProductsPage() {
           to: dateTo,
           category: categoryFilter || undefined,
           status: statusFilter || undefined,
+          stock: stockFilter || undefined,
         })
         .then((r) => r.data),
   });
 
-  // Client-side stock filter
-  const products = (data?.data ?? []).filter((p: any) => {
-    if (!stockFilter) return true;
-    if (stockFilter === "low")
-      return p.totalStock > 0 && p.totalStock <= (p.reorderLevel || 10);
-    if (stockFilter === "out") return (p.totalStock || 0) === 0;
-    if (stockFilter === "in") return p.totalStock > (p.reorderLevel || 10);
-    return true;
-  });
+  const products = data?.data ?? [];
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Products</h1>
-        <Link to="/inventory/products/new" className="btn-primary">
-          <Plus size={16} /> Add Product
-        </Link>
+        <div className="flex items-center gap-2">
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv"
+            onChange={handleImportFile}
+            className="hidden"
+          />
+          <button
+            onClick={() => csvInputRef.current?.click()}
+            disabled={importMutation.isPending}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <Upload size={16} />
+            {importMutation.isPending ? "Importing..." : "Import CSV"}
+          </button>
+          <Link to="/inventory/products/new" className="btn-primary">
+            <Plus size={16} /> Add Product
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}
@@ -154,7 +191,10 @@ export default function ProductsPage() {
           </div>
           <select
             value={stockFilter}
-            onChange={(e) => setStockFilter(e.target.value)}
+            onChange={(e) => {
+              setStockFilter(e.target.value);
+              setPage(1);
+            }}
             className="input-field !w-auto !py-2 min-w-[140px]"
           >
             <option value="">All Stock</option>
@@ -289,17 +329,19 @@ export default function ProductsPage() {
                         </span>
                       </td>
                       <td className="table-cell text-right tabular-nums text-gray-600 dark:text-gray-400">
-                        ৳{product.costPrice}
+                        {currencySymbol}
+                        {product.costPrice}
                       </td>
                       <td className="table-cell text-right tabular-nums font-medium">
                         {product.discount > 0 ? (
                           <div>
                             <span className="text-gray-500 dark:text-gray-400 line-through text-xs">
-                              ৳{product.sellingPrice}
+                              {currencySymbol}
+                              {product.sellingPrice}
                             </span>
                             <br />
                             <span>
-                              ৳
+                              {currencySymbol}
                               {(
                                 product.sellingPrice *
                                 (1 - product.discount / 100)
@@ -310,7 +352,10 @@ export default function ProductsPage() {
                             </span>
                           </div>
                         ) : (
-                          <>৳{product.sellingPrice}</>
+                          <>
+                            {currencySymbol}
+                            {product.sellingPrice}
+                          </>
                         )}
                       </td>
                       <td className="table-cell text-right tabular-nums font-medium">

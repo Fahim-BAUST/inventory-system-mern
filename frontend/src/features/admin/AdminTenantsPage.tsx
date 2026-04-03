@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
+import { validatePhone } from "@/utils/phone";
 
 const PLAN_LABELS: Record<string, string> = {
   free: "Free",
@@ -135,9 +136,15 @@ export default function AdminTenantsPage() {
               <input
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                type="tel"
                 className="input-field"
-                placeholder="01700000000"
+                placeholder="+880 1XXX-XXXXXX"
               />
+              {form.phone && validatePhone(form.phone) && (
+                <p className="text-red-500 text-xs mt-1">
+                  {validatePhone(form.phone)}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex gap-2 mt-4">
@@ -147,7 +154,8 @@ export default function AdminTenantsPage() {
                 createMutation.isPending ||
                 !form.name ||
                 !form.email ||
-                !form.phone
+                !form.phone ||
+                !!validatePhone(form.phone)
               }
               className="btn-primary"
             >

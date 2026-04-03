@@ -11,6 +11,7 @@ import { productRoutes } from "./routes/product.routes";
 import { categoryRoutes } from "./routes/category.routes";
 import { supplierRoutes } from "./routes/supplier.routes";
 import { batchRoutes, productBatchRoutes } from "./routes/batch.routes";
+import { purchaseOrderRoutes } from "./routes/purchaseOrder.routes";
 import { errorHandler } from "./middleware/errorHandler";
 import { startExpiryCron } from "./cron/expiryChecker";
 import { handleInventoryEvent } from "./consumers/inventoryConsumer";
@@ -31,6 +32,7 @@ app.use("/api/inventory/products/:productId/batches", productBatchRoutes);
 app.use("/api/inventory/categories", categoryRoutes);
 app.use("/api/inventory/suppliers", supplierRoutes);
 app.use("/api/inventory/expiry", batchRoutes);
+app.use("/api/inventory/purchase-orders", purchaseOrderRoutes);
 
 app.use(errorHandler);
 

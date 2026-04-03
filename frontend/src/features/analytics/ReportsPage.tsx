@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { analyticsApi } from "@/api/endpoints";
+import { useTenant } from "@/hooks/useTenant";
 import DateRangePicker, { type DatePreset } from "@/components/DateRangePicker";
 import ProductThumb from "@/components/ProductThumb";
 import { Download, TrendingUp, Package, CreditCard } from "lucide-react";
@@ -215,6 +216,7 @@ export default function ReportsPage() {
 }
 
 function SalesReportView({ data }: { data: any }) {
+  const { currencySymbol } = useTenant();
   const { totals, summaries, topProducts, paymentBreakdown } = data;
 
   const revenueOpts: ApexOptions = {
@@ -227,7 +229,7 @@ function SalesReportView({ data }: { data: any }) {
     yaxis: {
       labels: {
         style: { colors: "#9ca3af", fontSize: "11px" },
-        formatter: (v: number) => `৳${v.toLocaleString()}`,
+        formatter: (v: number) => `${currencySymbol}${v.toLocaleString()}`,
       },
     },
     fill: {
@@ -242,7 +244,7 @@ function SalesReportView({ data }: { data: any }) {
     colors: ["#3b82f6", "#10b981"],
     tooltip: {
       ...baseChartOpts.tooltip,
-      y: { formatter: (v: number) => `৳${v.toLocaleString()}` },
+      y: { formatter: (v: number) => `${currencySymbol}${v.toLocaleString()}` },
     },
   };
 
@@ -282,14 +284,14 @@ function SalesReportView({ data }: { data: any }) {
               show: true,
               label: "Total",
               formatter: (w: any) =>
-                `৳${w.globals.seriesTotals.reduce((a: number, b: number) => a + b, 0).toLocaleString()}`,
+                `${currencySymbol}${w.globals.seriesTotals.reduce((a: number, b: number) => a + b, 0).toLocaleString()}`,
             },
           },
         },
       },
     },
     tooltip: {
-      y: { formatter: (v: number) => `৳${v.toLocaleString()}` },
+      y: { formatter: (v: number) => `${currencySymbol}${v.toLocaleString()}` },
     },
     dataLabels: { enabled: false },
   };
@@ -307,7 +309,8 @@ function SalesReportView({ data }: { data: any }) {
       ),
       labels: {
         style: { colors: "#9ca3af", fontSize: "11px" },
-        formatter: (v: string) => `৳${Number(v).toLocaleString()}`,
+        formatter: (v: string) =>
+          `${currencySymbol}${Number(v).toLocaleString()}`,
       },
     },
     yaxis: {
@@ -316,7 +319,7 @@ function SalesReportView({ data }: { data: any }) {
     colors: ["#10b981"],
     tooltip: {
       ...baseChartOpts.tooltip,
-      y: { formatter: (v: number) => `৳${v.toLocaleString()}` },
+      y: { formatter: (v: number) => `${currencySymbol}${v.toLocaleString()}` },
     },
   };
 
@@ -353,7 +356,8 @@ function SalesReportView({ data }: { data: any }) {
                 Total Revenue
               </p>
               <p className="text-xl font-bold">
-                ৳{(totals?.totalRevenue ?? 0).toLocaleString()}
+                {currencySymbol}
+                {Math.round(totals?.totalRevenue ?? 0).toLocaleString()}
               </p>
             </div>
           </div>
@@ -530,7 +534,8 @@ function SalesReportView({ data }: { data: any }) {
                   </div>
                 </div>
                 <span className="text-sm font-semibold">
-                  ৳{p.revenue?.toLocaleString()}
+                  {currencySymbol}
+                  {p.revenue?.toLocaleString()}
                 </span>
               </div>
             ))}

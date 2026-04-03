@@ -7,6 +7,8 @@ import helmet from "helmet";
 import { connectDB } from "@pharmacy-saas/db";
 import { connectRabbitMQ, consumeEvents } from "@pharmacy-saas/rabbitmq";
 import { analyticsRoutes } from "./routes/analytics.routes";
+import { auditRoutes } from "./routes/audit.routes";
+import { forecastRoutes } from "./routes/forecast.routes";
 import { errorHandler } from "./middleware/errorHandler";
 import { handleAnalyticsEvent } from "./consumers/analyticsConsumer";
 
@@ -21,6 +23,8 @@ app.get("/health", (_req, res) => {
   res.json({ success: true, message: "Analytics service running" });
 });
 
+app.use("/api/analytics/audit-log", auditRoutes);
+app.use("/api/analytics/forecast", forecastRoutes);
 app.use("/api/analytics", analyticsRoutes);
 
 app.use(errorHandler);

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { userApi, roleApi } from "@/api/endpoints";
 import { UserPlus, Pencil, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
+import { validatePhone } from "@/utils/phone";
 
 export default function UsersPage() {
   const [showInvite, setShowInvite] = useState(false);
@@ -200,9 +201,15 @@ export default function UsersPage() {
                   onChange={(e) =>
                     setEditForm({ ...editForm, phone: e.target.value })
                   }
+                  type="tel"
                   className="input-field"
-                  placeholder="01700000000"
+                  placeholder="+880 1XXX-XXXXXX"
                 />
+                {editForm.phone && validatePhone(editForm.phone, true) && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {validatePhone(editForm.phone, true)}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">

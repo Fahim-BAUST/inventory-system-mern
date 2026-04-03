@@ -495,8 +495,9 @@ export default function TenantDetailPage() {
               <input
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                type="tel"
                 className="input-field"
-                placeholder="01700000000"
+                placeholder="+880 1XXX-XXXXXX"
               />
             </div>
           </div>

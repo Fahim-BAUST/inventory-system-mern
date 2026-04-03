@@ -2,15 +2,19 @@ import { Router, Request, Response, NextFunction } from "express";
 import { body, query, validationResult } from "express-validator";
 import multer from "multer";
 import { Product } from "../models/product.model";
+import { Category } from "../models/category.model";
 import { extractUser, requirePermission } from "../middleware/permissions";
 import {
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
   PERMISSIONS,
+  getPlanLimit,
 } from "@pharmacy-saas/shared";
 import { publishEvent } from "@pharmacy-saas/rabbitmq";
 import { EVENTS } from "@pharmacy-saas/shared";
 import { uploadImage, deleteImage } from "../utils/cloudinary";
+import { mongoose } from "@pharmacy-saas/db";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -18,6 +22,20 @@ const upload = multer({
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) cb(null, true);
     else cb(new Error("Only image files are allowed"));
+  },
+});
+
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  fileFilter: (_req, file, cb) => {
+    if (
+      file.mimetype === "text/csv" ||
+      file.mimetype === "application/vnd.ms-excel" ||
+      file.originalname.endsWith(".csv")
+    )
+      cb(null, true);
+    else cb(new Error("Only CSV files are allowed"));
   },
 });
 
@@ -66,6 +84,15 @@ productRoutes.get(
         ];
       }
       if (category) filter.categoryId = category;
+      const stock = req.query.stock as string;
+      if (stock === "low") {
+        filter.totalStock = { $gt: 0 };
+        filter.$expr = { $lte: ["$totalStock", "$reorderLevel"] };
+      } else if (stock === "out") {
+        filter.totalStock = 0;
+      } else if (stock === "in") {
+        filter.$expr = { $gt: ["$totalStock", "$reorderLevel"] };
+      }
       const from = req.query.from as string;
       const to = req.query.to as string;
       if (from || to) {
@@ -126,6 +153,30 @@ productRoutes.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { tenantId } = (req as any).user;
+
+      // Enforce plan product limit
+      const db = mongoose.connection.db;
+      if (db) {
+        const tid = new mongoose.Types.ObjectId(tenantId);
+        const [tenant, productCount] = await Promise.all([
+          db
+            .collection("tenants")
+            .findOne(
+              { _id: tid },
+              { projection: { "subscription.planId": 1 } },
+            ),
+          Product.countDocuments({ tenantId, isActive: true }),
+        ]);
+        const planId = tenant?.subscription?.planId || "free";
+        const maxProducts = getPlanLimit(planId, "maxProducts");
+        if (productCount >= maxProducts) {
+          return next(
+            new ForbiddenError(
+              `Your ${planId} plan allows up to ${maxProducts} product(s). Please upgrade to add more.`,
+            ),
+          );
+        }
+      }
 
       // Check for duplicate name + strength combination
       const existingByName = await Product.findOne({
@@ -265,6 +316,128 @@ productRoutes.delete(
       );
 
       res.json({ success: true, data: updatedProduct });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// POST /api/inventory/products/import — bulk import products from CSV
+productRoutes.post(
+  "/import",
+  requirePermission(PERMISSIONS.INVENTORY_CREATE),
+  csvUpload.single("file"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { tenantId } = (req as any).user;
+      const file = req.file;
+      if (!file) return next(new BadRequestError("CSV file is required"));
+
+      const content = file.buffer.toString("utf-8");
+      const lines = content.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2)
+        return next(
+          new BadRequestError(
+            "CSV must have a header row and at least one data row",
+          ),
+        );
+
+      // Parse header
+      const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+      const required = ["name", "sku", "unit", "costprice", "sellingprice"];
+      for (const r of required) {
+        if (!headers.includes(r))
+          return next(new BadRequestError(`Missing required column: ${r}`));
+      }
+
+      // Build category lookup
+      const categories = await Category.find({ tenantId });
+      const categoryMap = new Map(
+        categories.map((c: any) => [c.name.toLowerCase(), c._id]),
+      );
+
+      const results = { created: 0, skipped: 0, errors: [] as string[] };
+
+      for (let i = 1; i < lines.length; i++) {
+        // Simple CSV parse (handles quoted fields)
+        const values: string[] = [];
+        let current = "";
+        let inQuotes = false;
+        for (const ch of lines[i]) {
+          if (ch === '"') {
+            inQuotes = !inQuotes;
+            continue;
+          }
+          if (ch === "," && !inQuotes) {
+            values.push(current.trim());
+            current = "";
+            continue;
+          }
+          current += ch;
+        }
+        values.push(current.trim());
+
+        if (values.length < headers.length) {
+          results.errors.push(`Row ${i + 1}: insufficient columns`);
+          continue;
+        }
+
+        const row: Record<string, string> = {};
+        headers.forEach((h, idx) => (row[h] = values[idx] || ""));
+
+        if (!row.name || !row.sku || !row.unit) {
+          results.errors.push(`Row ${i + 1}: missing name, sku, or unit`);
+          continue;
+        }
+
+        // Check duplicate
+        const existing = await Product.findOne({
+          tenantId,
+          sku: row.sku,
+          isActive: true,
+        });
+        if (existing) {
+          results.skipped++;
+          results.errors.push(`Row ${i + 1}: SKU "${row.sku}" already exists`);
+          continue;
+        }
+
+        // Resolve category
+        let categoryId;
+        if (row.category) {
+          categoryId = categoryMap.get(row.category.toLowerCase());
+          if (!categoryId) {
+            const cat = await Category.create({ tenantId, name: row.category });
+            categoryMap.set(row.category.toLowerCase(), cat._id);
+            categoryId = cat._id;
+          }
+        }
+
+        await Product.create({
+          tenantId,
+          name: row.name,
+          genericName: row.genericname || row["generic name"] || "",
+          sku: row.sku,
+          barcode: row.barcode || "",
+          categoryId,
+          manufacturer: row.manufacturer || "",
+          dosageForm: row.dosageform || row["dosage form"] || "",
+          strength: row.strength || "",
+          unit: row.unit,
+          costPrice: parseFloat(row.costprice) || 0,
+          sellingPrice: parseFloat(row.sellingprice) || 0,
+          reorderLevel:
+            parseInt(row.reorderlevel || row["reorder level"] || "10") || 10,
+          description: row.description || "",
+        });
+        results.created++;
+      }
+
+      res.json({
+        success: true,
+        message: `Import complete: ${results.created} created, ${results.skipped} skipped`,
+        data: results,
+      });
     } catch (err) {
       next(err);
     }
