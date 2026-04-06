@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { Outlet, NavLink } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useThemeStore } from "@/store/themeStore";
+import AccountSwitcher from "@/components/AccountSwitcher";
 import {
   Building2,
   LayoutDashboard,
   CreditCard,
-  LogOut,
   Menu,
   X,
   Sun,
@@ -23,14 +23,8 @@ const adminNavItems = [
 
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-[#0b1120] transition-colors">
@@ -98,40 +92,12 @@ export default function AdminLayout() {
           ))}
         </nav>
 
-        {/* User */}
+        {/* User — account switcher */}
         <div
-          className="p-4 border-t"
+          className="p-3 border-t"
           style={{ borderColor: "rgba(255,255,255,0.06)" }}
         >
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-rose-600 text-white flex items-center justify-center text-xs font-bold shadow-md">
-              SA
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-200 truncate">
-                {user?.firstName} {user?.lastName}
-              </p>
-              <p className="text-[11px] text-gray-500 truncate">
-                {user?.email}
-              </p>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={toggleTheme}
-                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-white/[0.06] transition-colors"
-                title={theme === "dark" ? "Light mode" : "Dark mode"}
-              >
-                {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-              </button>
-              <button
-                onClick={handleLogout}
-                className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                title="Logout"
-              >
-                <LogOut size={14} />
-              </button>
-            </div>
-          </div>
+          <AccountSwitcher />
         </div>
       </aside>
 

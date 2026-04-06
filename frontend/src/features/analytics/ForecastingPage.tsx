@@ -19,6 +19,7 @@ import {
   Brain,
   Activity,
   Lock,
+  Clock,
 } from "lucide-react";
 import Chart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
@@ -61,19 +62,20 @@ const TREND_COLOR = {
   declining: "text-red-500",
 };
 
+function sanitizeCSV(value: any): string {
+  const v = value ?? "";
+  const s = String(v);
+  // Prevent CSV injection: prefix formulae-triggering chars with a single quote
+  if (/^[=+\-@\t\r]/.test(s)) return `'${s}`;
+  return s.includes(",") || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 function downloadCSV(rows: Record<string, any>[], filename: string) {
   if (!rows.length) return;
   const headers = Object.keys(rows[0]);
   const csv = [
     headers.join(","),
-    ...rows.map((r) =>
-      headers
-        .map((h) => {
-          const v = r[h] ?? "";
-          return typeof v === "string" && v.includes(",") ? `"${v}"` : v;
-        })
-        .join(","),
-    ),
+    ...rows.map((r) => headers.map((h) => sanitizeCSV(r[h])).join(",")),
   ].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -201,12 +203,15 @@ export default function ForecastingPage() {
                 Current_Stock: f.currentStock,
                 Daily_Demand: f.dailyDemand,
                 Days_Until_Stockout:
-                  f.daysUntilStockout > 9000 ? "N/A" : f.daysUntilStockout,
+                  f.daysUntilStockout == null ? "N/A" : f.daysUntilStockout,
+                Safety_Stock: f.safetyStock ?? 0,
                 Suggested_Reorder_Qty: f.suggestedReorderQty,
                 Estimated_Cost: f.estimatedCost,
                 Trend: f.trend,
                 Confidence: f.confidence,
                 Urgency: f.urgency,
+                Nearest_Expiry: f.nearestExpiry || "N/A",
+                Expiring_Qty: f.expiringQty || 0,
               }));
               downloadCSV(rows, "demand_forecast");
             }}
@@ -287,6 +292,7 @@ export default function ForecastingPage() {
               <th className="px-4 py-3 font-medium text-right">Est. Cost</th>
               <th className="px-4 py-3 font-medium text-center">Trend</th>
               <th className="px-4 py-3 font-medium text-center">Confidence</th>
+              <th className="px-4 py-3 font-medium text-center">Expiry</th>
               <th className="px-4 py-3 font-medium text-center">Urgency</th>
             </tr>
           </thead>
@@ -294,7 +300,7 @@ export default function ForecastingPage() {
             {isLoading ? (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   className="px-4 py-12 text-center text-gray-400"
                 >
                   <div className="flex flex-col items-center gap-2">
@@ -309,7 +315,7 @@ export default function ForecastingPage() {
             ) : !filtered.length ? (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   className="px-4 py-12 text-center text-gray-400"
                 >
                   <Package size={32} className="mx-auto mb-2 opacity-30" />
@@ -357,9 +363,9 @@ export default function ForecastingPage() {
                     </td>
                     <td className="px-4 py-3 text-right font-mono">
                       <span
-                        className={`font-semibold ${f.daysUntilStockout <= 7 ? "text-red-500" : f.daysUntilStockout <= 21 ? "text-amber-500" : ""}`}
+                        className={`font-semibold ${f.daysUntilStockout != null && f.daysUntilStockout <= 7 ? "text-red-500" : f.daysUntilStockout != null && f.daysUntilStockout <= 21 ? "text-amber-500" : ""}`}
                       >
-                        {f.daysUntilStockout > 9000
+                        {f.daysUntilStockout == null
                           ? "∞"
                           : `${f.daysUntilStockout}d`}
                       </span>
@@ -386,6 +392,21 @@ export default function ForecastingPage() {
                       >
                         {f.confidence}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {f.nearestExpiry ? (
+                        <span
+                          className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
+                          title={`${f.expiringQty} units expiring by ${f.nearestExpiry}`}
+                        >
+                          <Clock size={12} />
+                          {f.expiringQty}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">
+                          —
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span
@@ -487,7 +508,15 @@ function DetailModal({
     );
   }
 
-  const { product, forecast, lastSupplier } = detail;
+  const {
+    product,
+    forecast,
+    lastSupplier,
+    safetyStock,
+    suggestedReorderQty: backendQty,
+    expiringBatches,
+    config,
+  } = detail;
   const fc = forecast;
 
   const fmtDate = (d: string) =>
@@ -624,10 +653,12 @@ function DetailModal({
     },
   };
 
-  const suggestedQty = Math.max(
-    0,
-    Math.ceil(horizon * fc.dailyDemand * 1.5 - product.currentStock),
-  );
+  const suggestedQty =
+    backendQty ??
+    Math.max(
+      0,
+      Math.ceil(horizon * fc.dailyDemand * 1.5 - product.currentStock),
+    );
 
   const TrendIcon = TREND_ICON[fc.trend as keyof typeof TREND_ICON] || Minus;
 
@@ -662,7 +693,7 @@ function DetailModal({
 
         <div className="p-4 space-y-5">
           {/* Quick stats row */}
-          <div className="grid grid-cols-4 gap-3 text-center">
+          <div className="grid grid-cols-5 gap-3 text-center">
             <div className="bg-gray-50 dark:bg-white/[0.02] rounded-lg p-3">
               <p className="text-[11px] text-gray-500 uppercase tracking-wider">
                 Daily Demand
@@ -680,6 +711,12 @@ function DetailModal({
                   ? `${Math.round(product.currentStock / fc.dailyDemand)}d`
                   : "∞"}
               </p>
+            </div>
+            <div className="bg-gray-50 dark:bg-white/[0.02] rounded-lg p-3">
+              <p className="text-[11px] text-gray-500 uppercase tracking-wider">
+                Safety Stock
+              </p>
+              <p className="text-lg font-bold mt-0.5">{safetyStock ?? 0}</p>
             </div>
             <div className="bg-gray-50 dark:bg-white/[0.02] rounded-lg p-3">
               <p className="text-[11px] text-gray-500 uppercase tracking-wider">
@@ -751,6 +788,28 @@ function DetailModal({
             />
           </div>
 
+          {/* Expiring batches warning (F) */}
+          {expiringBatches && expiringBatches.length > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4">
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-1.5 mb-2">
+                <Clock size={14} /> Expiring Batches Within {horizon} Days
+              </p>
+              <div className="space-y-1">
+                {expiringBatches.map((b: any, i: number) => (
+                  <div
+                    key={i}
+                    className="flex justify-between text-xs text-amber-600 dark:text-amber-400"
+                  >
+                    <span>Batch {b.batchNumber}</span>
+                    <span>
+                      {b.quantity} units · Expires {b.expiryDate}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Reorder suggestion */}
           {suggestedQty > 0 && (
             <div className="flex items-center justify-between bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 rounded-xl p-4">
@@ -762,6 +821,12 @@ function DetailModal({
                 <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
                   Estimated cost:{" "}
                   {formatCurrency(suggestedQty * product.costPrice)}
+                  {safetyStock > 0 && (
+                    <span> · Includes {safetyStock} safety stock</span>
+                  )}
+                  {config?.leadTimeDays && (
+                    <span> · {config.leadTimeDays}d lead time</span>
+                  )}
                   {lastSupplier && (
                     <span> · Last supplier: {lastSupplier.supplierName}</span>
                   )}

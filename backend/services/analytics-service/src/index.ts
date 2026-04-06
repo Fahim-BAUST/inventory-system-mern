@@ -11,6 +11,7 @@ import { auditRoutes } from "./routes/audit.routes";
 import { forecastRoutes } from "./routes/forecast.routes";
 import { errorHandler } from "./middleware/errorHandler";
 import { handleAnalyticsEvent } from "./consumers/analyticsConsumer";
+import { startForecastCron } from "./cron/forecastCron";
 
 const app = express();
 const PORT = process.env.PORT_ANALYTICS || 4005;
@@ -48,6 +49,9 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`📊 Analytics Service running on port ${PORT}`);
   });
+
+  // Start forecast cache cron
+  startForecastCron();
 }
 
 start();

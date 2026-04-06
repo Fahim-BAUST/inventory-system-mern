@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { authApi } from "@/api/endpoints";
 import toast from "react-hot-toast";
@@ -20,7 +20,16 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
-  const { setAuth } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  const {
+    setAuth,
+    addAccountMode,
+    setAddAccountMode,
+    user: currentUser,
+  } = useAuthStore();
+
+  // Check if we're in add-account mode (from URL param or store)
+  const isAddMode = addAccountMode || searchParams.get("addAccount") === "1";
 
   const {
     register,
@@ -31,6 +40,11 @@ export default function LoginPage() {
     mode: "onBlur",
   });
 
+  const handleCancel = () => {
+    setAddAccountMode(false);
+    navigate(-1);
+  };
+
   const onSubmit = async (data: LoginForm) => {
     setLoading(true);
     try {
@@ -38,9 +52,22 @@ export default function LoginPage() {
       if (data.tenantId) payload.tenantId = data.tenantId;
       const res = await authApi.login(payload);
       const { user, tokens } = res.data.data;
+
+      // Prevent adding the same account twice
+      if (isAddMode && currentUser && user._id === currentUser._id) {
+        toast.error("This account is already active");
+        setLoading(false);
+        return;
+      }
+
       setAuth(user, tokens.accessToken, tokens.refreshToken);
-      toast.success("Welcome back!");
-      // Super admin goes to admin panel, tenant users go to dashboard
+
+      if (isAddMode) {
+        toast.success(`Switched to ${user.firstName} ${user.lastName}`);
+      } else {
+        toast.success("Welcome back!");
+      }
+
       if (user.role === "super_admin") {
         navigate("/admin/dashboard");
       } else {
@@ -55,7 +82,40 @@ export default function LoginPage() {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold text-center mb-6">Sign In</h2>
+      {isAddMode && (
+        <div className="mb-4">
+          <button
+            onClick={handleCancel}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+          >
+            <ArrowLeft size={14} />
+            Back to dashboard
+          </button>
+          <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-lg">
+            <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
+              Add Another Account
+            </p>
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+              Sign in with a different account. You can switch between accounts
+              without logging out.
+              {currentUser && (
+                <span>
+                  {" "}
+                  Currently signed in as{" "}
+                  <strong>
+                    {currentUser.firstName} {currentUser.lastName}
+                  </strong>
+                  .
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
+      <h2 className="text-xl font-semibold text-center mb-6">
+        {isAddMode ? "Add Account" : "Sign In"}
+      </h2>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

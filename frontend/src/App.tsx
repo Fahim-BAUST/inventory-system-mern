@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import AuthLayout from "@/layouts/AuthLayout";
 import DashboardLayout from "@/layouts/DashboardLayout";
@@ -54,8 +54,11 @@ function TenantRoute({ children }: { children: React.ReactNode }) {
 }
 
 function GuestRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, user } = useAuthStore();
-  if (isAuthenticated) {
+  const { isAuthenticated, addAccountMode, user } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  // Allow authenticated users to reach /login when adding another account
+  const isAddAccount = addAccountMode || searchParams.get("addAccount") === "1";
+  if (isAuthenticated && !isAddAccount) {
     if (user?.role === "super_admin")
       return <Navigate to="/admin/dashboard" replace />;
     return <Navigate to="/dashboard" replace />;

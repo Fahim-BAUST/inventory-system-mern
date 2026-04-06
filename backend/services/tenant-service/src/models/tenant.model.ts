@@ -23,6 +23,9 @@ export interface ITenantDoc {
     taxRate: number;
     lowStockThreshold: number;
     expiryAlertDays: number;
+    forecastLeadTimeDays: number;
+    forecastSafetyFactor: number;
+    forecastReviewPeriodDays: number;
   };
   subscription: {
     planId: string;
@@ -67,6 +70,9 @@ const tenantSchema = new Schema<ITenantDoc>(
       taxRate: { type: Number, default: 0 },
       lowStockThreshold: { type: Number, default: 10 },
       expiryAlertDays: { type: Number, default: 90 },
+      forecastLeadTimeDays: { type: Number, default: 7, min: 1, max: 90 },
+      forecastSafetyFactor: { type: Number, default: 1.65, min: 1, max: 3 },
+      forecastReviewPeriodDays: { type: Number, default: 7, min: 1, max: 30 },
     },
     subscription: {
       planId: { type: String, default: "free" },

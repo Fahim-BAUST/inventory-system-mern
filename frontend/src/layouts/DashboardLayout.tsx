@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { useThemeStore } from "@/store/themeStore";
 import { notificationApi } from "@/api/endpoints";
+import AccountSwitcher from "@/components/AccountSwitcher";
 import {
   LayoutDashboard,
   Package,
@@ -13,7 +14,6 @@ import {
   Settings,
   Users,
   ChevronDown,
-  LogOut,
   Menu,
   X,
   Pill,
@@ -97,7 +97,7 @@ export default function DashboardLayout() {
   ]);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -155,11 +155,6 @@ export default function DashboardLayout() {
     setExpandedMenus((prev) =>
       prev.includes(label) ? prev.filter((m) => m !== label) : [...prev, label],
     );
-  };
-
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
   };
 
   // Check if any child route is active (to auto-highlight parent)
@@ -269,29 +264,9 @@ export default function DashboardLayout() {
           ))}
         </nav>
 
-        {/* User card */}
+        {/* User card — account switcher */}
         <div className="p-3 border-t border-gray-200 dark:border-white/[0.06] shrink-0">
-          <div className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 text-white flex items-center justify-center text-xs font-bold shadow-sm">
-              {user?.firstName?.[0]}
-              {user?.lastName?.[0]}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">
-                {user?.firstName} {user?.lastName}
-              </p>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate capitalize">
-                {user?.role?.replace("_", " ")}
-              </p>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
-              title="Logout"
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
+          <AccountSwitcher />
         </div>
       </aside>
 
